@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS trend_scores (
     n_sources      INT  NOT NULL,   -- 최근 신호가 잡힌 출처 수
     mentions_7d    INT  NOT NULL,   -- 최근 7일 언급 합계
     search_growth  REAL,            -- 검색 관심도 증가율. 언급 증가율과 견주는 교차검증에 쓴다
-    signal_check   TEXT,            -- 일치(언급·검색이 함께 오름) / 불일치(한쪽만 오름) / 약함(둘 다 잠잠). 자료부족이면 NULL
+    signal_check   TEXT,            -- 일치(글·검색·SNS 계열 가운데 둘 이상이 함께 오름) / 불일치(한 계열만 오름) / 약함(모두 잠잠). 자료부족이면 NULL
     windows        JSONB,           -- 시간창별 판정 {"7d": {...}, "3m": {...} 또는 null}. 3m 은 주 단위로 본 약 3개월 흐름
     PRIMARY KEY (keyword_id, score_date)
 );
@@ -149,7 +149,7 @@ CREATE INDEX IF NOT EXISTS idx_trend_adoptions_keyword ON trend_adoptions (keywo
 -- 백테스팅 결과 보관. 같은 자료·같은 설정으로 다시 계산해 볼 수 있게 받은 시계열까지 함께 둔다.
 CREATE TABLE IF NOT EXISTS backtest_runs (
     id          BIGSERIAL PRIMARY KEY,
-    params      JSONB NOT NULL,     -- 시간 단위(date/week), 단계 판정 기준, 비교 기준(이동평균 창·임계값)
+    params      JSONB NOT NULL,     -- 평가 모드, 시간 단위(date), 계산 버전, 단계 판정 기준, 비교 기준(이동평균 창·임계값)
     rows        JSONB NOT NULL,     -- 아이템별 결과와 받은 시계열 [{"term":…, "signal":…, "peak":…, "lead_days":…, "series":[…]}]
     summary     JSONB NOT NULL,     -- 평균 리드타임(우리·비교 기준), 헛신호 수
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()

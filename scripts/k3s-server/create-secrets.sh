@@ -10,7 +10,7 @@
 #            네이버 키만 넣거나 바꾸려면:  bash scripts/k3s-server/create-secrets.sh --naver
 #            인스타그램 계정 번호·토큰을 넣거나 바꾸려면: bash scripts/k3s-server/create-secrets.sh --instagram
 #            (선택) 노코드 도구 Langflow 의 Secret 을 만들려면: bash scripts/k3s-server/create-secrets.sh --langflow
-#            (선택) Langflow 가 게이트웨이를 부를 전용 키를 만들려면(월 한도 달러, 기본 20):
+#            (선택) Langflow 가 게이트웨이를 부를 전용 키를 만들려면(30일 한도 달러, 기본 20):
 #                                                  bash scripts/k3s-server/create-secrets.sh --langflow-key 20
 #            (추후 도입) DGX Spark 의 vLLM 키를 넣거나 바꾸려면: bash scripts/k3s-server/create-secrets.sh --vllm
 # 만든 값 보기(예: 백엔드에 알려 줄 AI_API_KEY):
@@ -92,12 +92,12 @@ case "${1:-}" in
     ;;
   --langflow-key)
     # Langflow 가 게이트웨이(LiteLLM)를 부를 때 쓰는 전용 키를 만들어 한 번 보여 준다.
-    # 전용 키를 따로 두는 이유: Langflow 에서 쓴 요금을 따로 세고, 월 한도를 넘으면 Langflow 의 호출만 막기 위해서다.
+    # 전용 키를 따로 두는 이유: Langflow 에서 쓴 요금을 따로 세고, 30일 한도를 넘으면 Langflow 의 호출만 막기 위해서다.
     #   이 키로는 이름표 chat-fast·chat-smart·embed 만 부를 수 있고, 게이트웨이 설정은 바꿀 수 없다.
-    # 둘째 인자: 월 한도(달러, 기본 20). 같은 이름(langflow)의 옛 키가 있으면 지우고 새로 만든다(옛 키는 바로 못 쓰게 된다).
+    # 둘째 인자: 30일 한도(달러, 기본 20). 같은 이름(langflow)의 옛 키가 있으면 지우고 새로 만든다(옛 키는 바로 못 쓰게 된다).
     budget="${2:-20}"
     case "$budget" in
-      ''|*[!0-9.]*) echo "월 한도는 숫자(달러)로 적습니다. 예: $0 --langflow-key 20" >&2; exit 2 ;;
+      ''|*[!0-9.]*) echo "30일 한도는 숫자(달러)로 적습니다. 예: $0 --langflow-key 20" >&2; exit 2 ;;
     esac
     # 게이트웨이 파드 안에서 관리 API 를 부른다 — 관리 키(LITELLM_MASTER_KEY)가 파드 밖으로 나오지 않게 하기 위해서다
     kubectl -n ai-llm exec -i deployment/litellm -c litellm -- env KEY_BUDGET="$budget" python - <<'PY'
@@ -124,7 +124,7 @@ made = call("/key/generate", {
     "max_budget": float(os.environ["KEY_BUDGET"]),       # 한도(달러). 넘으면 이 키의 호출이 거절된다
     "budget_duration": "30d",                            # 30일마다 쓴 금액을 0 으로 되돌린다
 })
-print("Langflow 전용 게이트웨이 키 (월 한도 $" + os.environ["KEY_BUDGET"] + "):")
+print("Langflow 전용 게이트웨이 키 (30일 한도 $" + os.environ["KEY_BUDGET"] + "):")
 print(made["key"])
 PY
     echo "⚠️ 위 키는 다시 볼 수 없습니다. Langflow 화면의 전역 변수(Global Variables)에 바로 넣고, 채팅·메일·문서에 붙이지 않습니다." >&2
@@ -140,7 +140,7 @@ PY
     ;;
   "") ;;
   *)
-    echo "쓰는 법: $0 [--anthropic | --naver | --instagram | --langflow | --langflow-key [월 한도] | --vllm]" >&2
+    echo "쓰는 법: $0 [--anthropic | --naver | --instagram | --langflow | --langflow-key [30일 한도] | --vllm]" >&2
     exit 2
     ;;
 esac

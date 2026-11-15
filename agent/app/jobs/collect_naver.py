@@ -105,7 +105,7 @@ def fetch_search(client: httpx.Client, kind: str, query: str) -> SearchResults:
 def fetch_datalab(client: httpx.Client, keyword: str, start: date, end: date, time_unit: str = "date") -> dict[date, float]:
     """키워드의 날짜별 검색 관심도를 받는다.
 
-    time_unit 은 한 칸의 길이다: 'date'(하루) 또는 'week'(한 주, 날짜는 그 주의 시작일). 백테스팅이 긴 기간을 주 단위로 받을 때 쓴다.
+    time_unit 은 한 칸의 길이다: 'date'(하루) 또는 'week'(한 주, 날짜는 그 주의 시작일). 지금은 수집과 백테스팅 모두 'date' 만 쓴다.
     값은 실제 검색 수가 아니라 "요청한 기간 안의 최댓값을 100 으로 본 상대값" 이다. 증가율·가속 계산에는 충분하다.
     키워드를 하나씩 따로 요청하는 이유: 여러 개를 함께 넣으면 그중 가장 큰 키워드 기준으로 값이 정해지기 때문이다.
     """

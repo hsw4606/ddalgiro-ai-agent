@@ -12,7 +12,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${1:-$ROOT/site.env}"
 OUT="$ROOT/rendered"
-# 채워 넣을 값의 이름. site.env.example 의 항목과 같아야 한다.
+# 채워 넣을 값의 이름. 끝의 두 개(LANGFUSE_*_TARGETS)는 아래에서 이 스크립트가 만들고, 나머지는 site.env.example 의 항목과 같아야 한다.
 NAMES=(AI_DOMAIN ACME_EMAIL CLUSTER_ISSUER ALLOW_IP_1 ALLOW_IP_2 CHAT_FAST_MODEL CHAT_SMART_MODEL AGENT_IMAGE TEI_IMAGE LANGFUSE_ENABLED LANGFUSE_BASE_URL LANGFUSE_HEALTH_TARGETS LANGFUSE_METRICS_TARGETS)
 # DGX Spark 를 붙였을 때만 필요한 값의 이름
 DGX_NAMES=(DGX_SPARK_IP DGX_SPARK_PORT VLLM_MODEL)

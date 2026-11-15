@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     LLM_EXTRA_BODY: str = ""
 
     # ── 별도 Langfuse 서버의 AI 처리 추적 ──
-    # 처음에는 끈다. 주소는 ConfigMap, 프로젝트 키 두 개는 agent-secret 에만 넣는다.
+    # 코드의 기본값은 꺼짐이고, 배포에서는 site.env 의 값으로 켠다(새 설치의 견본은 켜짐).
+    # 주소는 ConfigMap, 프로젝트 키 두 개는 agent-secret 에만 넣는다.
     # 켜도 문의·근거·응답 원문은 보내지 않는다(app/observability.py 의 허용 목록).
     LANGFUSE_ENABLED: bool = False
     LANGFUSE_BASE_URL: str = ""

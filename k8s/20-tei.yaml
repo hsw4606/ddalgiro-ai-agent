@@ -1,7 +1,7 @@
 # 임베딩 서버 — 글을 1024칸짜리 숫자 벡터로 바꾼다(의미 검색에 쓴다). 모델은 BAAI/bge-m3.
 #
 # 프로그램: Hugging Face Text Embeddings Inference(TEI). GPU 없이 이 서버의 CPU 로 돈다.
-# 왜 여기서 직접 돌리나: Claude API 에는 임베딩이 없고, 임베딩 모델은 작아서(약 2.3GB) 16코어 CPU 로 충분하다.
+# 왜 여기서 직접 돌리나: Claude API 에는 임베딩이 없고, 임베딩 모델은 작아서(약 2.3GB) 이 서버의 CPU(4 vCPU)로 충분하다.
 #   메뉴 설명과 문의 글이 서버 밖으로 나가지 않는 이점도 있다.
 # 첫 기동: Hugging Face 에서 모델을 내려받아 /data 디스크에 둔다. 그동안(수 분) 준비 안 됨 상태다.
 # 접속 주소(클러스터 안): http://tei.ai-llm.svc/v1/embeddings (OpenAI 호환). 에이전트는 직접 부르지 않고 LiteLLM 의 embed 이름표로 부른다.

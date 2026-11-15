@@ -19,7 +19,7 @@
 
 1. [전체 구성 한눈에 보기](docs/00-개요/01-전체-구성-한눈에-보기.md) — 무엇을 서버에 올리고 무엇을 Claude API에 맡기나, 구현한 것과 아직 아닌 것
 2. [준비물과 정할 값](docs/00-개요/02-준비물과-정할-값.md) — 계정·도메인·IP, 값 파일, 버전 고정표
-3. 아래 목차의 01부터 차례로. 각 문서 끝의 **확인**이 통과하면 다음으로 갑니다
+3. [따라 하는 순서](docs/00-개요/01-전체-구성-한눈에-보기.md#9-따라-하는-순서)의 표대로 차례로. 각 문서 끝의 **확인**이 통과하면 다음으로 갑니다
 
 [모니터링과 AI 추적](docs/07-운영/02-모니터링과-AI-추적.md)도 기본 설치에 포함합니다. K3s 서버를 만든 뒤 문서 4장의 별도 Langfuse 서버를 설치하고, 에이전트를 배포할 때 프로젝트 키를 연결합니다. AI 서버에는 Prometheus·Alertmanager를 둡니다.
 
@@ -83,9 +83,10 @@
 |---|---|
 | `agent/` | 에이전트 소스(FastAPI + LangGraph), DB 테이블 정의, 시험, 카탈로그 CSV 견본 |
 | `k8s/` | 쿠버네티스 매니페스트 원본. `${이름}` 자리는 `site.env`의 값으로 채워집니다. `k8s/dgx-spark/`는 추후 도입 때만 씁니다 |
-| `deploy/` | 별도 Langfuse 서버의 Compose·HTTPS와 서버 밖 EC2 경보 템플릿. 실제 `.env`는 로컬 전용 |
-| `scripts/` | 값 채우기(`render.sh`), 이미지 빌드·보내기(`build-and-load.sh`), 비밀값 만들기(`k3s-server/`), 추후 도입할 DGX Spark 모델 서버(`dgx-spark/`) |
-| `site.env.example` | 이 설치에만 해당하는 값(도메인·허용 IP·Claude 모델 ID)의 견본. `site.env`로 복사해 씁니다(git에 올리지 않음) |
+| `deploy/` | 별도 Langfuse 서버의 Compose·HTTPS와 서버 밖 EC2 경보 템플릿. 실제 `.env`는 Langfuse 서버에서 만들어 그 서버에만 둡니다(git·서버 복사에서 제외) |
+| `scripts/` | 값 채우기(`render.sh`), 이미지 빌드·보내기(`build-and-load.sh`), K3s Secret 만들기(`k3s-server/`), 알림·Langfuse 키 Secret 넣기와 관측 설정 검사(`observability/`), 별도 Langfuse 서버의 `.env` 만들기(`langfuse/`), 추후 도입할 DGX Spark 모델 서버(`dgx-spark/`) |
+| `tests/` | 경보 규칙의 시계열 시험(`monitoring/alerts.test.yaml`). `scripts/observability/check-configs.py`가 읽습니다. 에이전트 소스의 시험은 `agent/tests/`에 있습니다 |
+| `site.env.example` | 이 설치에만 해당하는 값(도메인·허용 IP·Claude 모델 ID·이미지 이름·Langfuse 주소)의 견본. `site.env`로 복사해 씁니다(git에 올리지 않음) |
 | `BOX/` | 로컬에만 보관하는 연구개발계획서 원본(pptx). Git에서 제외하므로 새로 받은 저장소에는 없습니다. [대응 문서](docs/00-개요/03-연구개발계획서-구현-대응.md)가 이 원본의 11~26쪽과 29~30쪽을 기준으로 합니다 |
 
 ---
@@ -103,6 +104,7 @@ for f in scripts/*.sh scripts/*/*.sh; do bash -n "$f" && echo "문법 OK: $f"; d
 - 첫 줄은 마크다운 서식을 검사합니다. 오류 0건이면 통과입니다. 설정은 `.markdownlint.json`입니다.
 - 둘째 줄은 Mermaid 도식 문법을 검사합니다. `실패 0개`가 나오면 통과입니다. 가이드 저장소의 검사 도구를 함께 쓰므로 `ddalgiro-guide` 폴더에서 `npm install`을 한 번 해 두어야 합니다.
 - 셋째 줄은 셸 스크립트의 문법을 검사합니다.
+- 수집·경보 설정(`k8s/70-monitoring.yaml`)을 고쳤으면 [모니터링 8장](docs/07-운영/02-모니터링과-AI-추적.md#8-로컬-검사)의 설정 검사도 실행합니다.
 - 에이전트 소스의 시험은 [에이전트 구조와 배포 5장](docs/04-에이전트/01-에이전트-구조와-배포.md#5-코드를-고쳤을-때)에 있습니다.
 
 ---

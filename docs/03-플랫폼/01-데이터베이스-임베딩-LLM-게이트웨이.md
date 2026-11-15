@@ -2,7 +2,7 @@
 
 > **이 문서는 언제 보나요?** K3s 서버에 에이전트가 기대어 쓰는 부품 세 가지(DB, 임베딩 서버, LLM 게이트웨이)를 올릴 때. 끝나면 게이트웨이의 이름표(`chat-fast`·`embed`)로 대화와 임베딩이 됩니다.
 >
-> 앞 단계: [EC2 인스턴스와 K3s](../01-K3s-서버/01-EC2-인스턴스와-K3s.md), [Claude API 키와 모델](../02-Claude-API/01-Claude-API-키와-모델.md). 모든 명령은 **K3s 서버**의 `~/ddalgiro-ai-agent`에서 실행합니다(내 맥에서 `ssh ddalgiro-ai`로 들어갑니다).
+> 앞 단계: [EC2 인스턴스와 K3s](../01-K3s-서버/01-EC2-인스턴스와-K3s.md), [별도 Langfuse 서버 설치](../07-운영/02-모니터링과-AI-추적.md#4-langfuse-별도-서버-준비), [Claude API 키와 모델](../02-Claude-API/01-Claude-API-키와-모델.md). 모든 명령은 **K3s 서버**의 `~/ddalgiro-ai-agent`에서 실행합니다(내 맥에서 `ssh ddalgiro-ai`로 들어갑니다).
 >
 > ⚠️ 5장의 대화 호출은 실제 Claude API로 확인하지 못했습니다. 게이트웨이가 Claude API로 보내는 요청의 모양만 가짜 서버로 확인했습니다([버전 고정표](../00-개요/02-준비물과-정할-값.md#5-버전-고정표)).
 
@@ -37,7 +37,8 @@ bash scripts/k3s-server/create-secrets.sh
 - 네이버 키는 있으면 넣고, 없으면 `Enter`로 넘어갑니다. 나중에 `bash scripts/k3s-server/create-secrets.sh --naver`로 넣을 수 있습니다.
 - 인스타그램 수집에 쓰는 계정 번호와 토큰은 여기서 묻지 않습니다. 준비되면 `bash scripts/k3s-server/create-secrets.sh --instagram`으로 넣습니다([트렌드 문서 5장](../04-에이전트/02-트렌드-분석-추천.md#5-수집-출처-넓히기--인스타그램rss크롤링)).
 - 노코드 도구 Langflow의 Secret과 전용 키는 여기서 만들지 않습니다. 넣을 때 [Langflow 문서](../04-에이전트/05-노코드-도구-Langflow.md)의 명령으로 만듭니다.
-- 다시 실행해도 이미 있는 Secret은 바꾸지 않습니다. ⚠️ `postgres-secret`을 지우고 다시 만들면 이미 만들어진 DB의 비밀번호와 어긋나 접속이 안 됩니다.
+- Langfuse 프로젝트 키와 알림 메일 설정도 여기서 만들지 않습니다. 프로젝트 키는 [에이전트 배포 3장](../04-에이전트/01-에이전트-구조와-배포.md#3-배포)에서, 알림 메일 Secret은 [모니터링 2장](../07-운영/02-모니터링과-AI-추적.md#2-ai-서버에-지표알림-올리기)에서 넣습니다.
+- 다시 실행해도 이미 있는 Secret은 바꾸지 않습니다. ⚠️ DB를 만든 뒤에 Secret을 지우고 다시 만들면 DB에 저장된 비밀번호와 어긋나 접속·백업이 안 됩니다([7장](#7-문제-해결)).
 
 ### 확인
 
@@ -142,7 +143,7 @@ kubectl -n ai-data logs job/pg-backup-manual
 sudo ls -la /var/backups/ddalgiro-ai/
 ```
 
-- 첫 줄은 매일 02:00에 도는 백업을 등록하고, 둘째 줄은 지금 한 번 돌려 봅니다.
+- 첫 줄은 매일 02:00에 도는 백업을 등록하고, 둘째 줄은 지금 한 번 돌려 봅니다. 나중에 다시 돌릴 때는 먼저 `kubectl -n ai-data delete job pg-backup-manual`로 앞의 것을 지웁니다(같은 이름으로는 다시 만들 수 없습니다).
 - 로그에 `백업 완료: agent-….dump`, `백업 완료: litellm-….dump`가 나오고, 마지막 줄에서 두 파일이 보이면 성공입니다.
 - ⚠️ 이 파일은 같은 서버의 같은 디스크에 있습니다. 디스크 스냅샷으로 서버 밖에 두는 일과 되살리는 방법은 [운영 문서](../07-운영/01-점검-백업-문제-해결.md#4-백업)에 있습니다.
 
@@ -150,11 +151,11 @@ sudo ls -la /var/backups/ddalgiro-ai/
 
 | 증상 | 원인과 해결 |
 |---|---|
-| `postgres-0`이 `CrashLoopBackOff` | `kubectl -n ai-data logs postgres-0`을 봅니다. Secret이 없으면 2장부터 다시 |
+| `postgres-0`이 `CrashLoopBackOff`·`CreateContainerConfigError` | `CreateContainerConfigError`는 `postgres-secret`이 없다는 뜻이므로 2장부터 다시 합니다. `CrashLoopBackOff`면 `kubectl -n ai-data logs postgres-0`을 봅니다 |
 | LiteLLM 파드가 `Init:0/1`에서 오래 머묾 | DB를 기다리는 중입니다. `kubectl -n ai-data get pods`로 `postgres-0`이 `1/1`인지 확인 |
-| LiteLLM 로그에 `password authentication failed` | `postgres-secret`이 DB를 만든 뒤에 다시 만들어진 경우. DB의 비밀번호를 Secret 값으로 맞춥니다: `kubectl -n ai-data exec -it postgres-0 -- psql -U postgres` → `\password litellm`로 비밀번호를 숨겨 입력합니다. SQL에 값을 직접 적지 않습니다 |
+| LiteLLM 로그에 `password authentication failed` | DB에 저장된 비밀번호와 `litellm-secret`의 접속 주소(`DATABASE_URL`) 속 비밀번호가 어긋났습니다 — DB 디스크는 그대로 두고 Secret을 새로 만들었거나 그 반대입니다. 게이트웨이가 쓰는 값은 `kubectl -n ai-llm get secret litellm-secret -o jsonpath='{.data.DATABASE_URL}' \| base64 -d; echo`의 `litellm:` 뒤, `@` 앞입니다(⚠️ 화면에 비밀번호가 보이므로 화면 공유 중에는 하지 않습니다). DB를 그 값으로 맞춥니다: `kubectl -n ai-data exec -it postgres-0 -- psql -U postgres` → `\password litellm`로 숨겨 입력합니다. SQL에 값을 직접 적지 않습니다. 에이전트가 같은 오류를 내면 `ai-app`의 `agent-secret`과 `\password agent`로, 백업이 실패하면 `postgres-secret`의 `POSTGRES_PASSWORD`와 `\password postgres`로 같은 일을 합니다 |
 | 대화 호출이 `401`·`AuthenticationError` | 게이트웨이가 가진 Claude API 키가 틀렸거나 지워졌습니다. `bash scripts/k3s-server/create-secrets.sh --anthropic`으로 다시 넣습니다 |
-| 대화 호출이 `credit balance is too low`·`429`·`529` | Claude API 쪽의 크레딧·호출 한도·과부하입니다. [Claude API 문서 8장](../02-Claude-API/01-Claude-API-키와-모델.md#8-문제-해결) |
+| 대화 호출이 `402`·`credit balance is too low`·`429`·`529` | Claude API 쪽의 크레딧·호출 한도·과부하입니다. [Claude API 문서 8장](../02-Claude-API/01-Claude-API-키와-모델.md#8-문제-해결) |
 | 대화 호출이 `Connection error`·시간 초과 | 서버가 인터넷으로 나가지 못합니다. `curl -s -o /dev/null -w '%{http_code}\n' -m 10 https://api.anthropic.com/`이 `000`이면 보안 그룹의 아웃바운드 규칙을 확인합니다 |
 | 임베딩 서버가 `OOMKilled`로 재시작 반복 | `kubectl -n ai-llm describe pod -l app=tei`의 `Last State`가 `OOMKilled`인 경우. `k8s/20-tei.yaml`의 실행 옵션에 `--max-batch-tokens 2048`이 있는지 확인합니다 |
 | 임베딩 서버가 30분 넘게 준비 안 됨 | `kubectl -n ai-llm logs deployment/tei`에서 내려받기 오류를 봅니다. 서버가 `huggingface.co`에 닿는지 `curl -I https://huggingface.co` |

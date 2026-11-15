@@ -1,7 +1,7 @@
 # 서버 안의 Prometheus 가 함께 멈춰도 EC2 상태 검사 경보는 AWS 에서 보낸다.
 # 실제 리소스 생성·구독 메일 발송은 CloudFormation 에 이 파일을 배포했을 때만 일어난다.
 AWSTemplateFormatVersion: '2010-09-09'
-Description: EC2 host alarms for ddalgiro AI and optional Langfuse server
+Description: EC2 host alarms for ddalgiro AI server and Langfuse server
 Parameters:
   AiInstanceId:
     Type: AWS::EC2::Instance::Id
@@ -10,7 +10,7 @@ Parameters:
     Type: String
     Default: ''
     AllowedPattern: '(^$|^i-([0-9a-f]{8}|[0-9a-f]{17})$)'
-    Description: Optional separate Langfuse instance in this region
+    Description: Langfuse server instance in this region (leave empty only for a single-server install)
   AlertEmail:
     Type: String
     AllowedPattern: '[^\s@]+@[^\s@]+\.[^\s@]+'

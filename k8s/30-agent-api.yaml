@@ -20,7 +20,7 @@ data:
   MODEL_EMBED: embed
   EMBED_DIM: "1024"
   LLM_TIMEOUT_SECONDS: "120"
-  # 별도 관측 서버 준비 후에만 켠다. 프로젝트 키는 agent-secret 에서 읽는다.
+  # 별도 Langfuse 서버로 보내는 AI 처리 추적. 새 설치는 켜 둔다(site.env.example). 프로젝트 키는 agent-secret 에서 읽는다.
   LANGFUSE_ENABLED: "${LANGFUSE_ENABLED}"
   LANGFUSE_BASE_URL: "${LANGFUSE_BASE_URL}"
   # RSS·웹 피드 수집(collect-rss)이 읽을 피드 목록. 비워 두면([]) 수집하지 않는다.

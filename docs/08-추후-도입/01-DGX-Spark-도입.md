@@ -121,7 +121,7 @@ nano vllm.env
 
 ## 6. 모델 서버 띄우기
 
-⚠️ `vllm-start.sh`는 호스트 네트워크에서 모든 주소(`0.0.0.0`)를 받습니다. **실행 전에 7-1의 방화벽을 적용**하고, 사설 연결을 확인하기 전에는 공유기의 모델 포트를 공개하지 않습니다. 아래 확인은 우선 DGX Spark 자체에서만 합니다.
+⚠️ `vllm-start.sh`는 호스트 네트워크에서 모든 주소(`0.0.0.0`)를 받습니다. **실행 전에 [7-1의 방화벽](#7-1-방화벽-dgx-spark)을 먼저 적용**하고(K3s 서버 주소는 2장에서 정한 값), 사설 연결을 확인하기 전에는 공유기의 모델 포트를 공개하지 않습니다. 아래 확인은 우선 DGX Spark 자체에서만 합니다.
 
 ### 6-1. 이미지와 모델 받기
 
@@ -166,7 +166,7 @@ curl -s http://localhost:8000/v1/chat/completions \
 
 ### 7-1. 방화벽 (DGX Spark)
 
-모델 서버가 모든 네트워크 카드에서 듣고 있으므로, K3s 서버만 들어오게 막습니다. 아래의 `<K3s 서버 주소>`에는 2장에서 정한 길 위에서 **K3s 서버가 들어오는 주소**를 넣습니다(사설 연결이면 그 연결 위의 K3s 서버 주소).
+모델 서버가 모든 네트워크 카드에서 듣고 있으므로, K3s 서버만 들어오게 막습니다. 6장을 시작하기 전에 이미 적용했다면 마지막 줄(`sudo ufw status verbose`)로 규칙만 다시 확인합니다. 아래의 `<K3s 서버 주소>`에는 2장에서 정한 길 위에서 **K3s 서버가 들어오는 주소**를 넣습니다(사설 연결이면 그 연결 위의 K3s 서버 주소).
 
 ```bash
 sudo ufw allow from 192.168.0.0/24 to any port 22 proto tcp
@@ -274,7 +274,7 @@ Gemma 4 31B도 [NVIDIA가 DGX Spark 실행을 안내](https://developer.nvidia.c
    kubectl -n ai-llm rollout restart deployment/litellm
    ```
 
-   - 둘째 줄: `DGX_SPARK_IP`가 있으면 `k8s/dgx-spark/`의 매니페스트까지 `만들었습니다: … (12개 파일)`로 만듭니다.
+   - 둘째 줄: `DGX_SPARK_IP`가 있으면 `k8s/dgx-spark/`의 매니페스트까지 `만들었습니다: … (13개 파일)`로 만듭니다.
    - 셋째 줄: `vllm.env`에 넣은 `VLLM_API_KEY`를 물으면 붙여 넣습니다(게이트웨이를 다시 시작합니다).
    - 넷째 줄: 클러스터 밖의 DGX Spark에 `dgx-spark.ai-llm.svc`라는 클러스터 안 이름을 붙이고, 새 모델 표를 넣습니다.
 
@@ -290,7 +290,8 @@ kubectl -n ai-llm run curl-check --rm -i --restart=Never --image=curlimages/curl
 
 **함께 고칠 것**
 
-- 문서의 "Claude API" 서술([전체 구성](../00-개요/01-전체-구성-한눈에-보기.md)·[버전 고정표](../00-개요/02-준비물과-정할-값.md#5-버전-고정표)·[운영](../07-운영/01-점검-백업-문제-해결.md))을 바뀐 구성에 맞게 고칩니다.
+- 문서의 "Claude API" 서술([전체 구성](../00-개요/01-전체-구성-한눈에-보기.md)·[버전 고정표](../00-개요/02-준비물과-정할-값.md#5-버전-고정표)·[운영](../07-운영/01-점검-백업-문제-해결.md))을 바뀐 구성에 맞게 고치고, [월 비용 계산](../00-개요/04-월-비용-계산.md)을 다시 계산합니다.
+- 모델 서버가 멈춘 것을 운영 알림이 잡도록 `k8s/70-monitoring.yaml`의 `services` 수집 대상에 `http://dgx-spark.ai-llm.svc:8000/health`를 더하고 [모니터링 3장](../07-운영/02-모니터링과-AI-추적.md#3-무엇이-경보가-되나)의 방법으로 반영합니다. 더하지 않으면 API 오류 비율 경보로만 알게 됩니다.
 - Claude API를 쓰지 않게 되면 Claude Console에서 키를 지웁니다. 예비로 남기려면 게이트웨이의 대체 경로(한 모델이 실패하면 다른 모델로 넘기는 기능)를 설정합니다 — 이 저장소에서는 설정하거나 확인하지 않았습니다.
 - 모델을 바꿀 때는 DGX Spark의 `~/vllm/vllm.env`(`VLLM_MODEL`, 필요하면 `VLLM_IMAGE`)와 `vllm-start.sh`의 `vllm serve` 뒤 옵션을 함께 바꾸고 `bash vllm-start.sh`, 그다음 `site.env`의 `VLLM_MODEL`을 같은 값으로 바꿔 위 3번을 다시 합니다. NVIDIA 조합은 [플레이북의 모델별 스크립트](https://github.com/NVIDIA/dgx-spark-playbooks/tree/main/nvidia/playbook-vllm/assets)를 기준으로 삼습니다. Qwen용 초안 모델·`--kernel-config`·응답 해석 옵션은 다른 모델에 그대로 쓰지 않습니다.
 - ⚠️ DGX Spark는 한 번에 모델 하나만 올립니다. 두 모델을 동시에 띄우면 메모리가 모자라 기기가 멈출 수 있습니다. `--gpu-memory-utilization 0.60`은 올리지 않습니다(NVIDIA 레시피 기록: 0.70·0.85에서 기기가 멈춤).
@@ -299,7 +300,7 @@ kubectl -n ai-llm run curl-check --rm -i --restart=Never --image=curlimages/curl
 
 | 증상 | 원인과 해결 |
 |---|---|
-| 키 없이도 `/v1/models`가 `200` | 이 이미지가 `VLLM_API_KEY` 환경 변수를 읽지 않는 경우. `vllm-start.sh`의 `--port "$PORT" \` 아랫줄에 `--api-key "$VLLM_API_KEY" \`를 넣고 다시 실행합니다. 그래도 `200`이면 7장의 방화벽을 먼저 켜고, 2장의 길을 열지 않습니다 |
+| 키 없이도 `/v1/models`가 `200` | 이 이미지가 `VLLM_API_KEY` 환경 변수를 읽지 않는 경우. `vllm-start.sh`의 `--port "$PORT" \` 아랫줄에 `--api-key "$VLLM_API_KEY" \`를 넣고 다시 실행합니다. 그래도 `200`이면 7-1의 방화벽이 켜져 있는지(`sudo ufw status`) 확인하고, 2장의 길을 열지 않습니다 |
 | 컨테이너가 곧 죽음 (`docker ps`에 없음) | `docker logs vllm`의 마지막 줄을 봅니다. 모델 파일을 못 찾으면 `vllm.env`의 `HF_TOKEN`과 모델 이름, 디스크 여유(`df -h ~`)를 확인 |
 | `CUDA out of memory` | 다른 모델 앱(Ollama·ComfyUI 등)이 떠 있으면 끕니다. 그래도 나면 NVIDIA 안내대로 캐시를 비웁니다: `sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'` |
 | 시작 중 기기가 멈춤 | `--gpu-memory-utilization`을 올렸는지 확인합니다. NVIDIA 레시피는 0.60이며 0.70·0.85에서 문제가 있었다고 기록합니다 |

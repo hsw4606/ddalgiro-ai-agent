@@ -3,10 +3,11 @@
 실행: python -m app.jobs.backtest --input cases.json (다중 출처 원자료를 운영 계산기로 재생)
       python -m app.jobs.backtest                 (데이터랩 하루 단위 탐색; 운영 성능 평가가 아님)
       python -m app.jobs.backtest --no-save       (화면에만 출력)
-하는 일: 검증셋(VALIDATION_SET)의 아이템마다 네이버 데이터랩에서 그 기간의 검색 관심도를 받아,
+하는 일: --input 을 주면 그 파일의 다중 출처 일별 자료를 운영과 같은 계산(trend/signals.py)으로 하루씩 재생해 평가한다(네이버 키 불필요).
+        --input 이 없으면 검증셋(VALIDATION_SET)의 아이템마다 네이버 데이터랩에서 그 기간의 검색 관심도를 받아,
         우리 판정(trend/scoring.py 의 단계 판정)과 비교 기준(단순 이동평균 임계)의 첫 신호일·리드타임을 나란히 계산한다.
         계산은 trend/backtest.py 가 하고, 이 파일은 자료 받기·출력·보관만 맡는다.
-전제: 네이버 Client ID·Secret 이 환경 변수에 있어야 한다. 없으면 아무것도 하지 않고 끝난다. 아이템 하나에 데이터랩 1회를 쓴다.
+전제: 데이터랩 탐색에는 네이버 Client ID·Secret 이 환경 변수에 있어야 한다(없으면 안내만 하고 끝난다). 아이템 하나에 데이터랩 1회를 쓴다.
 보관: 받은 시계열·설정·결과표를 backtest_runs 에 한 줄로 남긴다. 같은 자료로 다시 계산하거나 제3자에게 보일 수 있게 하기 위해서다.
 출처: 검증셋과 절차는 ddalgiro-tips-task 가이드 09 §5 를 옮겼다. 정점 달은 보도 기준의 근삿값이라,
       결과표의 "실측 정점이 알려진 달과 맞는지"(label_matches)가 거짓이면 검색어 표기와 기간부터 다시 본다.

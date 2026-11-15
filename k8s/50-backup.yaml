@@ -2,7 +2,7 @@
 #
 # 이중화가 없으므로 이 백업이 디스크·DB 고장에 대한 유일한 대비다.
 # ⚠️ 백업 파일이 같은 서버의 같은 디스크에 있다. 디스크가 통째로 고장 나면 함께 잃는다 —
-#    문서 07-운영 의 "백업을 다른 기계로 옮기기" 를 반드시 함께 한다.
+#    문서 07-운영 의 "4-2. 백업을 서버 밖에 두기 — 디스크 스냅샷" 을 반드시 함께 한다.
 # 형식: pg_dump -Fc (압축된 전용 형식). 되살릴 때는 pg_restore 를 쓴다(문서 07-운영).
 # 손으로 한 번 돌리기: kubectl -n ai-data create job --from=cronjob/pg-backup pg-backup-manual
 apiVersion: batch/v1
