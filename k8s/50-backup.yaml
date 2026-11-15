@@ -1,0 +1,65 @@
+# DB 백업 — 매일 02:00(한국 시각)에 두 DB 를 파일로 떠서 이 서버의 /var/backups/ddalgiro-ai 에 둔다. 14일 지난 파일은 지운다.
+#
+# 이중화가 없으므로 이 백업이 디스크·DB 고장에 대한 유일한 대비다.
+# ⚠️ 백업 파일이 같은 서버의 같은 디스크에 있다. 디스크가 통째로 고장 나면 함께 잃는다 —
+#    문서 07-운영 의 "백업을 다른 기계로 옮기기" 를 반드시 함께 한다.
+# 형식: pg_dump -Fc (압축된 전용 형식). 되살릴 때는 pg_restore 를 쓴다(문서 07-운영).
+# 손으로 한 번 돌리기: kubectl -n ai-data create job --from=cronjob/pg-backup pg-backup-manual
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-backup
+  namespace: ai-data
+spec:
+  schedule: "0 2 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: pgvector/pgvector:0.8.7-pg18   # DB 서버와 같은 이미지 — 같은 버전의 pg_dump 가 들어 있다
+              env:
+                # 파일 이름의 날짜·시각을 한국 시각으로 찍는다
+                - name: TZ
+                  value: Asia/Seoul
+                # pg_dump 가 읽는 접속 정보. 비밀번호는 Secret 의 관리자 비밀번호를 쓴다
+                - name: PGHOST
+                  value: postgres.ai-data.svc
+                - name: PGUSER
+                  value: postgres
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secret
+                      key: POSTGRES_PASSWORD
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  # 백업 파일을 관리자(root)만 읽을 수 있게 만든다 — DB 내용이 그대로 들어 있기 때문이다
+                  umask 077
+                  stamp="$(date +%Y%m%d-%H%M%S)"
+                  for database in agent litellm; do
+                    # 임시 이름으로 뜬 뒤 끝나면 이름을 바꾼다 — 중간에 실패한 반쪽 파일이 정상 백업처럼 보이지 않게
+                    pg_dump -Fc -d "$database" -f "/backup/$database-$stamp.dump.tmp"
+                    mv "/backup/$database-$stamp.dump.tmp" "/backup/$database-$stamp.dump"
+                    echo "백업 완료: $database-$stamp.dump ($(du -h "/backup/$database-$stamp.dump" | cut -f1))"
+                  done
+                  # 14일 넘은 백업과 남은 임시 파일을 지운다
+                  find /backup -name '*.dump' -mtime +14 -delete
+                  find /backup -name '*.dump.tmp' -mtime +1 -delete
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              hostPath:
+                path: /var/backups/ddalgiro-ai   # 서버의 실제 폴더. 없으면 만든다
+                type: DirectoryOrCreate

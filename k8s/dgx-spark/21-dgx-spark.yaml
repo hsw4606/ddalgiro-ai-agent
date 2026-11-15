@@ -1,0 +1,37 @@
+# (추후 도입) DGX Spark 로 가는 연결 — 클러스터 밖에 있는 모델 서버(vLLM)에 클러스터 안의 이름을 붙인다.
+#
+# 지금 구성(대화 모델 = Claude API)에서는 적용하지 않는다. site.env 에 DGX_SPARK_IP 가 있을 때만 render.sh 가 이 파일을 만든다.
+# 쓰는 때와 순서: docs/08-추후-도입/01-DGX-Spark-도입.md
+# DGX Spark 는 쿠버네티스에 넣지 않고 별도 기계로 둔다. 그래도 클러스터 안에서는
+#   http://dgx-spark.ai-llm.svc:8000  이라는 이름으로 부를 수 있게, "파드를 고르지 않는 Service" 에
+# Spark 의 IP 를 직접 적은 EndpointSlice 를 붙인다.
+# DGX_SPARK_IP 는 K3s 서버(AWS)에서 사무실의 DGX Spark 로 닿는 주소다 — 둘을 이은 사설 연결(VPN) 위의 IP 를 넣는다.
+# 이렇게 하면 Spark 의 IP 가 바뀌어도 site.env 의 DGX_SPARK_IP 만 고쳐 이 파일을 다시 적용하면 된다.
+# 확인(서버에서): curl -s http://<DGX_SPARK_IP>:<포트>/health -o /dev/null -w '%{http_code}\n'  → 200
+apiVersion: v1
+kind: Service
+metadata:
+  name: dgx-spark
+  namespace: ai-llm
+spec:
+  # selector 가 없다 — 아래 EndpointSlice 가 목적지를 정한다
+  ports:
+    - name: http
+      port: 8000
+      targetPort: ${DGX_SPARK_PORT}
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: dgx-spark-1
+  namespace: ai-llm
+  labels:
+    kubernetes.io/service-name: dgx-spark   # 이 표시로 위 Service 와 이어진다
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: ${DGX_SPARK_PORT}
+endpoints:
+  - addresses:
+      - "${DGX_SPARK_IP}"

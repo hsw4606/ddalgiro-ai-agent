@@ -1,0 +1,127 @@
+# LiteLLM — LLM 게이트웨이. 에이전트의 모든 모델 호출이 여기를 거친다.
+#
+# 하는 일: 에이전트가 붙여 보낸 "이름표"(chat-fast·chat-smart·embed)를 아래 표에서 찾아 실제 모델로 넘긴다.
+#   chat-fast  → Claude API 의 빠르고 값싼 모델 (감성 분류·조건 뽑기)
+#   chat-smart → Claude API 의 글 쓰는 모델 (브리핑·추천 사유)
+#   embed      → 이 서버의 임베딩 서버(TEI)
+# 왜 거치나: 모델을 바꾸거나 더할 때 이 표만 고치면 되고 에이전트 코드는 그대로다. 호출 기록과 사용량(토큰·요금)도 한곳에 모인다.
+#           에이전트는 OpenAI 형식으로 말하고, 게이트웨이가 Claude API 형식(https://api.anthropic.com/v1/messages)으로 바꿔 보낸다.
+# 밖으로 나가는 것: 대화 호출의 지시문·문의 글·근거 문장이 HTTPS(443)로 Anthropic 에 간다. 임베딩은 서버 밖으로 나가지 않는다.
+# 전제: Secret litellm-secret (scripts/k3s-server/create-secrets.sh 가 만든다)
+#       LITELLM_MASTER_KEY(게이트웨이를 부를 때 쓰는 키), DATABASE_URL(litellm DB), ANTHROPIC_API_KEY(Claude API 키)
+# 접속 주소(클러스터 안): http://litellm.ai-llm.svc:4000  (OpenAI 호환, Authorization: Bearer <LITELLM_MASTER_KEY>)
+# 바깥에는 열지 않는다(Ingress 없음). 관리 화면은 필요할 때 kubectl port-forward 로 본다.
+# 대화 모델을 사무실 장비(DGX Spark)로 옮길 때 바꿀 곳은 docs/08-추후-도입/01-DGX-Spark-도입.md 에 있다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: ai-llm
+data:
+  config.yaml: |
+    model_list:
+      # 빠른 일(분류·조건 뽑기)과 글 쓰는 일(브리핑·추천 사유)의 이름표를 나눠, 일의 무게에 맞는 모델을 쓴다.
+      # 건수가 많고 단순한 일은 값싼 모델로, 건수가 적고 글을 쓰는 일은 더 좋은 모델로 보낸다(연구개발계획서의 "모델 티어링").
+      # 모델 ID 는 site.env 의 CHAT_FAST_MODEL·CHAT_SMART_MODEL 이 채운다. 바꿀 때는 버전 고정표도 함께 고친다.
+      - model_name: chat-fast
+        litellm_params:
+          model: anthropic/${CHAT_FAST_MODEL}       # anthropic/ = Claude API 로 보낸다. 뒤는 Claude 모델 ID
+          api_key: os.environ/ANTHROPIC_API_KEY     # 키는 Secret 에서 읽는다(이 파일에 적지 않는다)
+          max_tokens: 16000                         # 답 한 번의 최대 길이(토큰, 모델의 생각 과정 포함). 빼면 모델 최댓값(128000)으로 나간다
+          timeout: 120                              # 초. 넘기면 실패로 돌려주고 에이전트가 대체 처리를 한다
+      - model_name: chat-smart
+        litellm_params:
+          model: anthropic/${CHAT_SMART_MODEL}
+          api_key: os.environ/ANTHROPIC_API_KEY
+          max_tokens: 16000
+          timeout: 180
+      # 생각 깊이(effort)는 정하지 않아 모델 기본값으로 돈다. 응답이 느리거나 요금을 줄이려면 위 두 항목의 litellm_params 에
+      #   output_config: { effort: low }   를 더하고, 같은 문의 묶음으로 품질을 비교한다(값: low·medium·high).
+      # 임베딩은 Claude API 에 없어 이 서버에서 직접 돌린다. 글이 서버 밖으로 나가지 않는다.
+      - model_name: embed
+        litellm_params:
+          model: openai/BAAI/bge-m3
+          api_base: http://tei.ai-llm.svc/v1
+          api_key: none                                  # 임베딩 서버는 키를 검사하지 않는다(클러스터 안에서만 접근)
+          timeout: 60
+        model_info:
+          mode: embedding
+
+    router_settings:
+      num_retries: 1          # 실패하면 한 번 더 시도 (Claude API 의 순간 과부하·호출 한도 초과에 대비)
+
+    litellm_settings:
+      # 모델이 받지 않는 옵션은 오류 대신 조용히 뺀다.
+      # ⚠️ 끄지 않는다 — 에이전트는 같은 입력에 같은 답을 받으려고 temperature=0 을 보내는데, Claude 의 최신 모델은
+      #    이 옵션을 받으면 요청을 거절(400)한다. 이 설정이 켜져 있어야 게이트웨이가 그 옵션을 빼고 보낸다.
+      drop_params: true
+      request_timeout: 180
+
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY
+      database_url: os.environ/DATABASE_URL
+      store_model_in_db: false   # 모델 표는 DB 가 아니라 이 파일이 기준이다
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  namespace: ai-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: litellm
+  template:
+    metadata:
+      labels:
+        app: litellm
+    spec:
+      initContainers:
+        # DB 가 접속을 받을 때까지 기다렸다가 LiteLLM 을 시작한다.
+        # DB 보다 먼저 뜨면 LiteLLM 이 곧바로 죽고, 재시작 간격이 점점 길어져 전체 기동이 늦어진다
+        - name: wait-for-db
+          image: pgvector/pgvector:0.8.7-pg18   # pg_isready 가 들어 있고 DB 때문에 이미 받아 둔 이미지
+          command: ["sh", "-c", "until pg_isready -h postgres.ai-data.svc -p 5432 -q; do echo 'DB 를 기다리는 중'; sleep 3; done"]
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm-database:v1.108.3-lts
+          args: ["--config", "/app/config.yaml", "--port", "4000"]
+          ports:
+            - name: http
+              containerPort: 4000
+          envFrom:
+            - secretRef:
+                name: litellm-secret
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+          # 첫 기동 때 DB 테이블을 만드느라 시간이 걸린다. 최대 5분(10초 × 30번) 기다린다
+          startupProbe:
+            httpGet: { path: /health/liveliness, port: http }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /health/readiness, port: http }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { memory: 2Gi }
+      volumes:
+        - name: config
+          configMap:
+            name: litellm-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  namespace: ai-llm
+spec:
+  selector:
+    app: litellm
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http

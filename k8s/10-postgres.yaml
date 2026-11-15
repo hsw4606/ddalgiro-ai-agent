@@ -1,0 +1,101 @@
+# PostgreSQL 18 + pgvector — 이 시스템의 유일한 DB 서버. 한 대에 DB 두 개를 둔다.
+#   litellm : LLM 게이트웨이가 쓰는 DB (키·사용량 기록)
+#   agent   : 에이전트가 쓰는 DB (트렌드 지표·점수·브리핑, 업체 카탈로그와 벡터)
+# 전제: Secret postgres-secret 이 먼저 있어야 한다(scripts/k3s-server/create-secrets.sh 가 만든다).
+#       들어 있는 값: POSTGRES_PASSWORD(관리자 postgres), LITELLM_DB_PASSWORD, AGENT_DB_PASSWORD
+# 접속 주소(클러스터 안): postgres.ai-data.svc:5432
+# 이중화하지 않는다: 파드 1개, 디스크는 이 서버의 로컬 디스크(local-path). 대신 매일 백업한다(50-backup.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: ai-data
+data:
+  # 데이터 폴더가 비어 있는 "첫 기동" 때 한 번만 실행된다. 계정 2개·DB 2개·vector 확장을 만든다.
+  # 비밀번호는 Secret 에서 환경 변수로 받아 psql 변수(:'이름')로 넘긴다 — 이 파일에 비밀번호를 적지 않기 위해서다.
+  10-init.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres \
+         -v litellm_pw="$LITELLM_DB_PASSWORD" -v agent_pw="$AGENT_DB_PASSWORD" <<'SQL'
+    CREATE USER litellm WITH PASSWORD :'litellm_pw';
+    CREATE DATABASE litellm OWNER litellm;
+    CREATE USER agent WITH PASSWORD :'agent_pw';
+    CREATE DATABASE agent OWNER agent;
+    -- vector 확장은 관리자만 만들 수 있어 여기서 미리 만든다. 테이블은 에이전트가 시작할 때 스스로 만든다
+    \connect agent
+    CREATE EXTENSION IF NOT EXISTS vector;
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: ai-data
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: ai-data
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          # PostgreSQL 18 에 pgvector 0.8.7 이 들어 있는 이미지
+          image: pgvector/pgvector:0.8.7-pg18
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { memory: 8Gi }
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            # PostgreSQL 18 이미지는 데이터를 /var/lib/postgresql/18/docker 에 둔다.
+            # 그래서 디스크를 그 윗폴더인 /var/lib/postgresql 에 붙인다(17 이하 이미지의 …/data 와 다르다).
+            - name: data
+              mountPath: /var/lib/postgresql
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
+            defaultMode: 0755   # 실행 권한을 줘야 첫 기동 스크립트로 실행된다
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path   # K3s 기본 저장소: 서버의 /var/lib/rancher/k3s/storage 아래에 폴더를 만든다
+        resources:
+          requests:
+            storage: 100Gi

@@ -1,0 +1,59 @@
+# 바깥 공개 — https://${AI_DOMAIN}/v1/… 로 들어온 요청을 agent-api 로 넘긴다. 세 가지 문을 차례로 통과해야 한다.
+#
+#   ① HTTPS 만 받는다(websecure). 인증서는 cert-manager 가 ${CLUSTER_ISSUER} 로 발급해 agent-api-tls 에 넣는다.
+#   ② 허용한 공인 IP 에서 온 요청만 받는다(allow-callers). 그 밖의 IP 는 403.
+#   ③ 한 IP 가 짧은 시간에 너무 많이 부르면 429 로 막는다(rate-limit).
+#   그 뒤 agent-api 가 요청 헤더 X-AI-Key 를 확인한다(네 번째 문).
+# 공개하는 경로는 /v1 뿐이다. 상태 확인(/healthz)과 API 설명 화면(/docs)은 바깥에 열지 않는다.
+# 전제: 05-traefik-config.yaml 이 적용돼 있어야 ②가 진짜 IP 로 동작한다.
+# 확인: 허용 IP 에서  curl -H "X-AI-Key: …" https://${AI_DOMAIN}/v1/whoami   → 내 공인 IP 가 보인다
+#       그 밖의 IP 에서 같은 명령 → 403
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: allow-callers
+  namespace: ai-app
+spec:
+  ipAllowList:
+    sourceRange:
+      - "${ALLOW_IP_1}"   # 딸기로 백엔드 서버의 공인 IP
+      - "${ALLOW_IP_2}"   # 확인용으로 열어 둘 IP
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: ai-app
+spec:
+  rateLimit:
+    average: 60     # 1분 평균 60회까지
+    period: 1m
+    burst: 30       # 순간적으로 몰릴 때 30회까지는 봐준다
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agent-api
+  namespace: ai-app
+  annotations:
+    cert-manager.io/cluster-issuer: ${CLUSTER_ISSUER}
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    # 값의 형식: <네임스페이스>-<이름>@kubernetescrd. 적은 순서대로 통과한다
+    traefik.ingress.kubernetes.io/router.middlewares: ai-app-allow-callers@kubernetescrd,ai-app-rate-limit@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - ${AI_DOMAIN}
+      secretName: agent-api-tls
+  rules:
+    - host: ${AI_DOMAIN}
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: agent-api
+                port:
+                  number: 8000

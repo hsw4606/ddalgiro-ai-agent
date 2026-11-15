@@ -1,0 +1,4 @@
+shop_name,region,address,is_partner,is_open,rating,review_count,source_url,menu_name,category,price,diet_tags,storage,description,moq,max_qty_per_day,lead_time_days,individual_packaging,gift_packaging,tax_invoice,delivery_areas,capacity_verified_on,capacity_valid_until
+예시제과,서울 강남구,서울 강남구 예시로 1,Y,Y,4.6,210,https://example.com/shop/1,비건 초코 케이크,케이크,42000,비건;글루텐프리,냉장,쌀가루로 만든 진한 초콜릿 케이크,50,300,5,Y,Y,Y,서울;경기 성남시,2026-11-10,
+예시제과,서울 강남구,서울 강남구 예시로 1,Y,Y,4.6,210,https://example.com/shop/1,저당 레몬 케이크,케이크,36000,저당,냉장,설탕을 줄여 상큼하고 가벼운 레몬 케이크,50,200,5,Y,N,Y,서울;경기 성남시,2026-11-10,
+예시빵집,부산 해운대구,,N,Y,4.4,85,,소금빵,빵,3200,,상온,겉은 바삭하고 속은 쫄깃한 소금빵,,,,,,,,,

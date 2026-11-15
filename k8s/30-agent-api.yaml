@@ -1,0 +1,85 @@
+# agent-api — 직접 만든 AI 에이전트의 API 서버 (소스는 agent/).
+#
+# 하는 일: 트렌드 랭킹·브리핑·업체 맞춤 추천과 자연어 추천을 HTTP 로 돌려준다.
+# 전제: 이미지 ${AGENT_IMAGE} 가 이 서버의 K3s 에 들어 있어야 한다(scripts/build-and-load.sh).
+#       Secret agent-secret (scripts/k3s-server/create-secrets.sh 가 만든다)
+#       DATABASE_URL(agent DB), LITELLM_API_KEY(게이트웨이 키), AI_API_KEY(부르는 쪽이 보내야 하는 키),
+#       NAVER_CLIENT_ID·NAVER_CLIENT_SECRET(네이버 수집용, 비어 있어도 된다)
+#       INSTAGRAM_USER_ID·INSTAGRAM_ACCESS_TOKEN(인스타그램 수집용, 없어도 된다 — create-secrets.sh --instagram 으로 넣는다)
+# 접속 주소(클러스터 안): http://agent-api.ai-app.svc:8000   바깥 공개는 41-ingress.yaml 이 맡는다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-config
+  namespace: ai-app
+data:
+  # 비밀이 아닌 설정. 이름과 뜻은 agent/app/settings.py 와 같다
+  LITELLM_BASE_URL: http://litellm.ai-llm.svc:4000
+  MODEL_CHAT_FAST: chat-fast
+  MODEL_CHAT_SMART: chat-smart
+  MODEL_EMBED: embed
+  EMBED_DIM: "1024"
+  LLM_TIMEOUT_SECONDS: "120"
+  # RSS·웹 피드 수집(collect-rss)이 읽을 피드 목록. 비워 두면([]) 수집하지 않는다.
+  # 예: '[{"name": "디저트매체", "url": "https://example.com/feed.xml"}]'  — 주소에 {keyword} 를 넣으면 키워드마다 부른다.
+  # ⚠️ 피드를 넣기 전에 그 사이트의 약관이 자동 수집을 허용하는지 확인한다(robots.txt 는 작업이 스스로 확인한다).
+  RSS_FEEDS: "[]"
+  # 웹 주소를 읽을 때 붙이는 이름표(User-Agent). 사이트 관리자가 연락할 수 있게 운영 주소를 괄호 안에 적어 둔다
+  CRAWL_USER_AGENT: "ddalgiro-ai-agent/0.2 (+https://${AI_DOMAIN})"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-api
+  namespace: ai-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-api
+  template:
+    metadata:
+      labels:
+        app: agent-api
+    spec:
+      containers:
+        - name: agent-api
+          image: ${AGENT_IMAGE}
+          # 이미지를 인터넷 저장소에서 받지 않고 서버에 넣어 둔 것을 쓴다. 없으면 파드가 ErrImageNeverPull 로 멈춰 바로 알 수 있다
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: agent-config
+            - secretRef:
+                name: agent-secret
+          # /readyz 는 DB 까지 확인한다 → 통과해야 요청을 받는다.  /healthz 는 프로세스만 확인한다 → 실패하면 재시작한다
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { memory: 2Gi }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-api
+  namespace: ai-app
+spec:
+  selector:
+    app: agent-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

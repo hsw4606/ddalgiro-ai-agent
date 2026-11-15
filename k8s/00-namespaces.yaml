@@ -1,0 +1,19 @@
+# 네임스페이스 3개 — 쿠버네티스 안에서 자원을 나누는 칸막이다.
+#   ai-data : 데이터 저장소 (PostgreSQL + pgvector)
+#   ai-llm  : 모델 쪽 (LLM 게이트웨이 LiteLLM, 임베딩 서버)
+#   ai-app  : 직접 만든 에이전트 (API 와 정기 작업), 넣었다면 노코드 도구 Langflow
+# 나누는 이유: 비밀값(Secret)이 네임스페이스 단위로 보호되고, 문제가 생긴 칸만 따로 볼 수 있다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-data
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-llm
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-app

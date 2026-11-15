@@ -1,0 +1,156 @@
+# 에이전트의 정기 작업 5개 — agent-api 와 같은 이미지를 쓰고 실행 명령만 다르다.
+#
+#   매 6시간 10분 collect-instagram  인스타그램 해시태그의 어제 게시물 수를 모은다 (계정·토큰이 없으면 아무것도 안 하고 끝난다)
+#   03:00 collect-naver      네이버 검색·데이터랩에서 어제까지의 지표를 모은다 (키가 없으면 아무것도 안 하고 끝난다)
+#   03:20 collect-rss        RSS·웹 피드에서 글 수와 글 메타 정보를 모은다 (피드 목록이 비어 있으면 아무것도 안 하고 끝난다)
+#   04:00 run-trend          모든 키워드의 감성·점수·브리핑을 갱신한다 (게이트웨이를 거쳐 Claude API 를 부른다 — 요금이 드는 작업)
+#   04:30 embed-catalog      임베딩이 없는 메뉴에 벡터를 채운다
+# 시각은 한국 시각(timeZone)이다. 순서가 중요하다: 수집 → 분석.
+# collect-instagram 은 24시간 창을 겹쳐 조회한다. 확인 구간의 합집합이 하루 전체를 덮어야 집계 완료다.
+#   한 번 놓친 날은 다시 받을 수 없어 재시도(backoffLimit)를 넉넉히 둔다.
+# 손으로 한 번 돌리기:  kubectl -n ai-app create job --from=cronjob/run-trend run-trend-manual
+# 결과 보기:           kubectl -n ai-app logs job/run-trend-manual
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: collect-naver
+  namespace: ai-app
+spec:
+  schedule: "0 3 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid          # 앞 실행이 안 끝났으면 새로 시작하지 않는다
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1                # 실패하면 한 번만 다시 시도
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: job
+              image: ${AGENT_IMAGE}
+              imagePullPolicy: Never
+              command: ["python", "-m", "app.jobs.collect_naver"]
+              envFrom:
+                - configMapRef: { name: agent-config }
+                - secretRef: { name: agent-secret }
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 1Gi }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: run-trend
+  namespace: ai-app
+spec:
+  schedule: "0 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: job
+              image: ${AGENT_IMAGE}
+              imagePullPolicy: Never
+              command: ["python", "-m", "app.jobs.run_trend"]
+              envFrom:
+                - configMapRef: { name: agent-config }
+                - secretRef: { name: agent-secret }
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 1Gi }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: embed-catalog
+  namespace: ai-app
+spec:
+  schedule: "30 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: job
+              image: ${AGENT_IMAGE}
+              imagePullPolicy: Never
+              command: ["python", "-m", "app.jobs.embed_catalog"]
+              envFrom:
+                - configMapRef: { name: agent-config }
+                - secretRef: { name: agent-secret }
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 1Gi }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: collect-instagram
+  namespace: ai-app
+spec:
+  schedule: "10 */6 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: job
+              image: ${AGENT_IMAGE}
+              imagePullPolicy: Never
+              command: ["python", "-m", "app.jobs.collect_instagram"]
+              envFrom:
+                - configMapRef: { name: agent-config }
+                - secretRef: { name: agent-secret }
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 1Gi }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: collect-rss
+  namespace: ai-app
+spec:
+  schedule: "20 3 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: job
+              image: ${AGENT_IMAGE}
+              imagePullPolicy: Never
+              command: ["python", "-m", "app.jobs.collect_rss"]
+              envFrom:
+                - configMapRef: { name: agent-config }
+                - secretRef: { name: agent-secret }
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 1Gi }

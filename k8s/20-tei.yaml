@@ -1,0 +1,79 @@
+# 임베딩 서버 — 글을 1024칸짜리 숫자 벡터로 바꾼다(의미 검색에 쓴다). 모델은 BAAI/bge-m3.
+#
+# 프로그램: Hugging Face Text Embeddings Inference(TEI). GPU 없이 이 서버의 CPU 로 돈다.
+# 왜 여기서 직접 돌리나: Claude API 에는 임베딩이 없고, 임베딩 모델은 작아서(약 2.3GB) 16코어 CPU 로 충분하다.
+#   메뉴 설명과 문의 글이 서버 밖으로 나가지 않는 이점도 있다.
+# 첫 기동: Hugging Face 에서 모델을 내려받아 /data 디스크에 둔다. 그동안(수 분) 준비 안 됨 상태다.
+# 접속 주소(클러스터 안): http://tei.ai-llm.svc/v1/embeddings (OpenAI 호환). 에이전트는 직접 부르지 않고 LiteLLM 의 embed 이름표로 부른다.
+# ⚠️ 모델을 바꾸면 벡터 길이가 달라진다 — agent/sql/schema.sql 의 vector(1024) 와 임베딩을 모두 다시 만들어야 한다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tei-models
+  namespace: ai-llm
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tei
+  namespace: ai-llm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # 디스크를 파드 하나만 쓸 수 있어, 새 파드를 띄우기 전에 옛 파드를 먼저 내린다
+  selector:
+    matchLabels:
+      app: tei
+  template:
+    metadata:
+      labels:
+        app: tei
+    spec:
+      containers:
+        - name: tei
+          image: ${TEI_IMAGE}
+          # --max-batch-tokens 2048: 한 번에 처리하는 글의 양(토큰)의 상한.
+          #   기본값(16384)으로 두면 시작할 때 "이 모델이 받을 수 있는 가장 긴 글(8192 토큰) 두 개" 로 준비 운동을 하다가
+          #   메모리 8GB 를 넘겨 죽는다(OOMKilled). 메뉴 설명·문의처럼 짧은 글만 다루므로 2048 로 충분하고,
+          #   이보다 긴 글이 들어오면 앞부분만 잘라 쓴다.
+          args: ["--model-id", "BAAI/bge-m3", "--port", "80", "--max-batch-tokens", "2048"]
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests: { cpu: "2", memory: 3Gi }
+            limits: { memory: 8Gi }
+          # 모델을 내려받는 동안에는 재시작하지 않고 최대 30분(10초 × 180번) 기다린다
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 180
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          volumeMounts:
+            - name: models
+              mountPath: /data   # TEI 이미지가 내려받은 모델을 두는 곳
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: tei-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tei
+  namespace: ai-llm
+spec:
+  selector:
+    app: tei
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

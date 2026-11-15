@@ -1,0 +1,18 @@
+# K3s 에 들어 있는 Traefik(바깥 요청을 받아 서비스로 넘기는 문지기)의 설정을 한 줄 바꾼다.
+#
+# 바꾸는 것: externalTrafficPolicy 를 Local 로 — 요청을 보낸 쪽의 "진짜 IP" 가 Traefik 까지 그대로 전달되게 한다.
+# 왜 필요한가: 41-ingress.yaml 이 "허용한 IP 에서 온 요청만 받는다" 는 제한을 건다.
+#            기본값(Cluster)에서는 중간에서 IP 가 클러스터 내부 주소로 바뀌어 모든 요청이 같은 IP 로 보인다.
+# 적용 방식: K3s 는 이 종류(HelmChartConfig)의 자원을 보면 Traefik 을 새 설정으로 다시 배포한다.
+#           K3s 가 관리하는 traefik.yaml 원본은 직접 고치지 않는다(K3s 가 시작할 때 되돌린다).
+# 확인:     kubectl -n kube-system get svc traefik -o jsonpath='{.spec.externalTrafficPolicy}'  → Local
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local

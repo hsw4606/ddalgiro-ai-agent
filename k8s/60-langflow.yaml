@@ -1,0 +1,113 @@
+# Langflow — 블록을 끌어다 이어 LLM 흐름을 만드는 노코드 도구. 보조 도구이며 넣지 않아도 나머지는 그대로 돈다.
+#
+# 하는 일: 화면에서 지시문·모델·도구를 선으로 이어 흐름을 만들고 바로 시험해 본다.
+#          지시문과 모델을 견줘 보는 실험, 챗 화면 시제품, 직원용 내부 도구에 쓴다.
+# 하지 않는 일: 트렌드 분석·자연어 추천의 운영 흐름은 agent-api(코드)가 맡는다. Langflow 가 쓴 글은 근거 검사를
+#          거치지 않으므로 업체·고객에게 바로 내보내지 않는다. 쓸 만한 흐름은 agent/ 의 코드로 옮긴다.
+# 모델을 부르는 길: Claude API 를 직접 부르지 않는다. 게이트웨이(http://litellm.ai-llm.svc:4000/v1)를 Langflow 전용 키로 부른다.
+#          전용 키는 scripts/k3s-server/create-secrets.sh --langflow-key 가 월 한도를 걸어 만든다(Langflow 화면에 넣는다).
+# 전제: Secret langflow-secret (scripts/k3s-server/create-secrets.sh --langflow 가 만든다)
+#       LANGFLOW_SECRET_KEY(화면에서 넣은 키들을 암호화해 저장하는 열쇠 — 32바이트를 base64 로 적은 44자),
+#       LANGFLOW_SUPERUSER_PASSWORD(관리자 비밀번호. 디스크가 비어 있는 첫 기동 때만 쓰인다 — 그 뒤 Secret 을 바꿔도 비밀번호는 그대로다)
+#       ⚠️ 이 Secret 을 지우고 다시 만들면 Langflow 에 저장해 둔 키를 풀 수 없게 된다.
+# 접속: 바깥에 열지 않는다(Ingress 없음). kubectl port-forward 와 SSH 터널로만 본다
+#       (docs/04-에이전트/05-노코드-도구-Langflow.md).
+# 자료: 흐름·저장한 키·대화 기록은 아래 디스크의 SQLite 파일에 있다. 서버 디스크 스냅샷에 함께 담긴다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: langflow-data
+  namespace: ai-app
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path   # K3s 기본 저장소: 서버의 /var/lib/rancher/k3s/storage 아래에 폴더를 만든다
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langflow
+  namespace: ai-app
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # 디스크(SQLite 파일)를 파드 하나만 쓸 수 있어, 새 파드를 띄우기 전에 옛 파드를 먼저 내린다
+  selector:
+    matchLabels:
+      app: langflow
+  template:
+    metadata:
+      labels:
+        app: langflow
+    spec:
+      # Langflow 는 쿠버네티스 API 를 쓸 일이 없다. 접근 토큰을 파드에 넣지 않는다
+      automountServiceAccountToken: false
+      containers:
+        - name: langflow
+          image: langflowai/langflow:1.13.2
+          ports:
+            - name: http
+              containerPort: 7860
+          env:
+            - { name: LANGFLOW_HOST, value: "0.0.0.0" }
+            - { name: LANGFLOW_PORT, value: "7860" }
+            # ── 자료를 두는 곳: 모두 아래 디스크(/data/langflow) 안. 파드를 다시 만들어도 남는다 ──
+            - { name: LANGFLOW_CONFIG_DIR, value: /data/langflow }
+            - { name: LANGFLOW_DATABASE_URL, value: "sqlite:////data/langflow/langflow.db" }
+            - { name: LANGFLOW_KNOWLEDGE_BASES_DIR, value: /data/langflow/knowledge_bases }
+            # ── 로그인: 자동 로그인을 끄고, 관리자 계정 하나만 둔다 ──
+            - { name: LANGFLOW_AUTO_LOGIN, value: "false" }
+            - { name: LANGFLOW_SUPERUSER, value: admin }        # 비밀번호는 Secret 의 LANGFLOW_SUPERUSER_PASSWORD
+            - { name: LANGFLOW_ENABLE_SIGNUP, value: "false" }  # 로그인하지 않은 사람이 가입하지 못하게 한다(관리자는 계정을 만들 수 있다)
+            # ── 코드 실행 막기 ──
+            # Langflow 는 블록의 파이썬 코드를 화면에서 고쳐 서버 안에서 돌릴 수 있다. 서버 안의 키·주소에 닿을 수 있으므로 막는다.
+            #   ALLOW_CUSTOM_COMPONENTS=false: 새로 짠 블록은 만들 수 없고, 코드를 고친 내장 블록은 서버의 원래 코드로 돌린다
+            #   BLOCK_CODE_INTERPRETER_COMPONENTS=true: 파이썬 실행 블록(Python Interpreter 등)을 막는다
+            - { name: LANGFLOW_ALLOW_CUSTOM_COMPONENTS, value: "false" }
+            - { name: LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS, value: "true" }
+            # ── 흐름이 부를 수 있는 주소 ──
+            # Langflow 는 흐름이 내부망 주소(서버 자신·AWS 의 서버 정보 주소·사설 IP)를 부르는 것을 막는다(SSRF 방어).
+            # 게이트웨이와 에이전트도 내부망 주소라 함께 막히므로, 이 두 이름만 열어 준다. 모델 블록의 주소 칸에도 같은 검사가 걸린다.
+            # 이름을 글자 그대로 비교하므로 흐름에도 이 이름을 똑같이 적는다(…svc.cluster.local 처럼 적으면 막힌다).
+            - { name: LANGFLOW_SSRF_PROTECTION_ENABLED, value: "true" }
+            - { name: LANGFLOW_SSRF_ALLOWED_HOSTS, value: "litellm.ai-llm.svc,agent-api.ai-app.svc" }
+            # ── 밖으로 내보내지 않기·줄이기 ──
+            - { name: LANGFLOW_DO_NOT_TRACK, value: "true" }                 # 사용 통계를 Langflow 쪽으로 보내지 않는다
+            - { name: LANGFLOW_STORE_ENVIRONMENT_VARIABLES, value: "false" } # 파드의 환경 변수를 화면의 변수로 가져오지 않는다
+          envFrom:
+            - secretRef:
+                name: langflow-secret
+          volumeMounts:
+            - name: data
+              mountPath: /data/langflow
+          # 첫 기동 때 DB 를 만들고 견본 흐름을 설치하느라 몇 분 걸린다(시험 환경에서 약 6분). 다음부터는 수십 초다.
+          # 서버의 코어가 시험 환경보다 느릴 수 있어 최대 15분(10초 × 90번) 기다린다
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 1536Mi }   # 흐름을 돌린 뒤 실제 사용량이 약 1.3GiB 였다
+            limits: { memory: 3Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: langflow-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langflow
+  namespace: ai-app
+spec:
+  selector:
+    app: langflow
+  ports:
+    - name: http
+      port: 7860
+      targetPort: http

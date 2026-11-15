@@ -1,0 +1,14 @@
+node_modules/
+.DS_Store
+# 연구개발계획서 원본은 로컬에만 보관
+BOX/
+# 이 설치에만 해당하는 값과 그 값으로 만든 매니페스트
+site.env
+rendered/
+# DGX Spark 의 키가 든 실제 값 파일
+scripts/dgx-spark/vllm.env
+# 파이썬 실행·시험 부산물
+__pycache__/
+.pytest_cache/
+.venv/
+agent/.env

@@ -1,0 +1,20 @@
+# 딸기로 AI 에이전트 0.3.0이 쓰는 파이썬 패키지.
+# 버전을 고정하는 이유: 같은 파일로 언제 빌드해도 같은 이미지가 나오게 하기 위해서다.
+# 버전을 올릴 때는 tests/ 를 다시 돌려 확인하고 docs/00-개요/02-준비물과-정할-값.md 의 버전 표도 함께 고친다.
+
+# HTTP API
+fastapi==0.162.7
+uvicorn[standard]==0.54.0
+pydantic-settings==2.16.3
+
+# 그래프(단계·갈림길)와 LLM 호출
+langgraph==1.2.22
+langchain-core==1.8.0
+langchain-openai==1.8.0
+
+# PostgreSQL 접속(연결 묶음 포함)과 vector 칸
+psycopg[binary,pool]==3.3.9
+pgvector==0.5.1
+
+# 네이버 API 호출
+httpx==0.28.1
