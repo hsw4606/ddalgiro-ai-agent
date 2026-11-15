@@ -8,10 +8,12 @@
 
 | 만드는 것 | 내용 |
 |---|---|
-| 서버와 모델 | **AWS EC2 두 대를 기본 설치**: AI용 `t3.xlarge`(4 vCPU·16GiB·gp3 100GiB, K3s) + Langfuse용 `m7i.xlarge`(4 vCPU·16GiB·gp3 100GiB, Docker Compose). 대화 모델은 Claude API. 두 서버는 역할 분리이며 이중화 없음. 사무실 GPU 장비(DGX Spark)는 [추후 도입](docs/08-추후-도입/01-DGX-Spark-도입.md) |
+| 서버와 모델 | **AWS EC2 두 대를 기본 설치**(AI용·Langfuse용). 대화 모델은 Claude API |
 | 기능 | 연구개발계획서의 두 안건 — [트렌드 분석·추천](../ddalgiro-tips-task/docs/02_트렌드분석추천시스템_기획.md)과 [단체주문 자연어 추천·랭킹](../ddalgiro-tips-task/docs/03_자연어추천랭킹시스템_기획.md). 구현 범위는 [대응 문서](docs/00-개요/03-연구개발계획서-구현-대응.md) |
 | 쓰는 곳 | 딸기로 관리자 화면 — 직원이 입점업체에 줄 AI 정보를 봅니다 |
 | 공개 | AWS 보안 그룹과 IP 허용 목록으로, 딸기로 백엔드만 HTTPS로 부릅니다 |
+
+- **서버와 모델**: AI용은 `t3.xlarge`(4 vCPU·16GiB·gp3 100GiB, K3s), Langfuse용은 `m7i.xlarge`(4 vCPU·16GiB·gp3 100GiB, Docker Compose)입니다. 두 서버는 역할 분리이며 이중화는 없습니다. 사무실 GPU 장비(DGX Spark)는 [추후 도입](docs/08-추후-도입/01-DGX-Spark-도입.md)입니다.
 
 ---
 
@@ -24,6 +26,8 @@
 [모니터링과 AI 추적](docs/07-운영/02-모니터링과-AI-추적.md)도 기본 설치에 포함합니다. K3s 서버를 만든 뒤 문서 4장의 별도 Langfuse 서버를 설치하고, 에이전트를 배포할 때 프로젝트 키를 연결합니다. AI 서버에는 Prometheus·Alertmanager를 둡니다.
 
 한 달에 드는 요금은 두 서버·호스트 경보 **약 $360.97**, Claude API를 더한 기본 사용량은 **약 $581.40(약 78만 원)**입니다. 1달러=1,350원·부가세 제외·사용량 가정이며, [월 비용 계산](docs/00-개요/04-월-비용-계산.md)에서 산식과 별도 비용을 봅니다.
+
+인스턴스 유형이 정해진 뒤 두 서버를 **1년 약정**(EC2 Instance Savings Plans, 선결제 없음)으로 사면 AWS 고정비가 월 약 $238.31로 줄어 한 달 약 $122.66(약 17만 원), **1년 약 $1,471.94(약 199만 원)**를 아낍니다. 기본 사용량 합계는 약 $458.74(약 62만 원)가 됩니다. 약정 요금은 서버를 꺼도 1년 동안 나가므로, 사는 시기·방식·주의는 [1년 약정으로 줄이기](docs/00-개요/04-월-비용-계산.md#1년-약정으로-줄이기)를 봅니다.
 
 연구개발계획서 11~26쪽의 기능과 29~30쪽의 성능지표 25개가 어디까지 구현됐는지는 [연구개발계획서와 구현 대응](docs/00-개요/03-연구개발계획서-구현-대응.md)을 봅니다. 현재는 시제품이며, 이 문서에 정식 평가에 필요한 것과 보완한 9개 항목을 함께 적었습니다.
 
@@ -82,12 +86,19 @@
 | 폴더 | 내용 |
 |---|---|
 | `agent/` | 에이전트 소스(FastAPI + LangGraph), DB 테이블 정의, 시험, 카탈로그 CSV 견본 |
-| `k8s/` | 쿠버네티스 매니페스트 원본. `${이름}` 자리는 `site.env`의 값으로 채워집니다. `k8s/dgx-spark/`는 추후 도입 때만 씁니다 |
-| `deploy/` | 별도 Langfuse 서버의 Compose·HTTPS와 서버 밖 EC2 경보 템플릿. 실제 `.env`는 Langfuse 서버에서 만들어 그 서버에만 둡니다(git·서버 복사에서 제외) |
-| `scripts/` | 값 채우기(`render.sh`), 이미지 빌드·보내기(`build-and-load.sh`), K3s Secret 만들기(`k3s-server/`), 알림·Langfuse 키 Secret 넣기와 관측 설정 검사(`observability/`), 별도 Langfuse 서버의 `.env` 만들기(`langfuse/`), 추후 도입할 DGX Spark 모델 서버(`dgx-spark/`) |
-| `tests/` | 경보 규칙의 시계열 시험(`monitoring/alerts.test.yaml`). `scripts/observability/check-configs.py`가 읽습니다. 에이전트 소스의 시험은 `agent/tests/`에 있습니다 |
-| `site.env.example` | 이 설치에만 해당하는 값(도메인·허용 IP·Claude 모델 ID·이미지 이름·Langfuse 주소)의 견본. `site.env`로 복사해 씁니다(git에 올리지 않음) |
-| `BOX/` | 로컬에만 보관하는 연구개발계획서 원본(pptx). Git에서 제외하므로 새로 받은 저장소에는 없습니다. [대응 문서](docs/00-개요/03-연구개발계획서-구현-대응.md)가 이 원본의 11~26쪽과 29~30쪽을 기준으로 합니다 |
+| `k8s/` | 쿠버네티스 매니페스트 원본. `${이름}` 자리는 `site.env`의 값으로 채워집니다 |
+| `deploy/` | 별도 Langfuse 서버의 Compose·HTTPS와 서버 밖 EC2 경보 템플릿 |
+| `scripts/` | 값 채우기(`render.sh`), 이미지 빌드·보내기(`build-and-load.sh`), K3s Secret 만들기(`k3s-server/`) 등 |
+| `tests/` | 경보 규칙의 시계열 시험(`monitoring/alerts.test.yaml`) |
+| `site.env.example` | 이 설치에만 해당하는 값의 견본. `site.env`로 복사해 씁니다(git에 올리지 않음) |
+| `BOX/` | 로컬에만 보관하는 연구개발계획서 원본(pptx). Git에서 제외하므로 새로 받은 저장소에는 없습니다 |
+
+- **`k8s/`**: `k8s/dgx-spark/`는 추후 도입 때만 씁니다.
+- **`deploy/`**: 실제 `.env`는 Langfuse 서버에서 만들어 그 서버에만 둡니다(git·서버 복사에서 제외).
+- **`scripts/`**: 그 밖에 알림·Langfuse 키 Secret 넣기와 관측 설정 검사(`observability/`), 별도 Langfuse 서버의 `.env` 만들기(`langfuse/`), 추후 도입할 DGX Spark 모델 서버(`dgx-spark/`)가 있습니다.
+- **`tests/`**: `scripts/observability/check-configs.py`가 읽습니다. 에이전트 소스의 시험은 `agent/tests/`에 있습니다.
+- **`site.env.example`**: 담는 값은 도메인·허용 IP·Claude 모델 ID·이미지 이름·Langfuse 주소입니다.
+- **`BOX/`**: [대응 문서](docs/00-개요/03-연구개발계획서-구현-대응.md)가 이 원본의 11~26쪽과 29~30쪽을 기준으로 합니다.
 
 ---
 

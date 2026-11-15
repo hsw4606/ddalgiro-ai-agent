@@ -21,10 +21,13 @@ flowchart LR
 
 | 부품 | 파일 | 하는 일 |
 |---|---|---|
-| PostgreSQL + pgvector | `k8s/10-postgres.yaml` | DB 서버 한 대에 DB 두 개 — `agent`(에이전트 자료·벡터), `litellm`(게이트웨이 기록). **pgvector**는 PostgreSQL에 벡터 검색을 더하는 확장입니다 |
+| PostgreSQL + pgvector | `k8s/10-postgres.yaml` | DB 서버 한 대에 DB 두 개 — `agent`(에이전트 자료·벡터), `litellm`(게이트웨이 기록) |
 | 임베딩 서버 (TEI) | `k8s/20-tei.yaml` | 글을 1024칸 숫자 벡터로 바꿉니다. 뜻이 비슷한 글은 벡터도 가까워서 의미 검색에 씁니다 |
-| LiteLLM | `k8s/22-litellm.yaml` | LLM 게이트웨이. 이름표를 보고 대화 호출은 Claude API로, 임베딩은 임베딩 서버로 넘깁니다. Claude API 키를 가진 유일한 부품입니다 |
+| LiteLLM | `k8s/22-litellm.yaml` | LLM 게이트웨이. 이름표를 보고 대화 호출은 Claude API로, 임베딩은 임베딩 서버로 넘깁니다 |
 | DB 백업 | `k8s/50-backup.yaml` | 매일 02:00에 DB를 파일로 뜹니다 |
+
+- **PostgreSQL + pgvector**: pgvector는 PostgreSQL에 벡터 검색을 더하는 확장입니다.
+- **LiteLLM**: Claude API 키를 가진 유일한 부품입니다.
 
 ## 2. 비밀값 만들기
 
@@ -151,14 +154,25 @@ sudo ls -la /var/backups/ddalgiro-ai/
 
 | 증상 | 원인과 해결 |
 |---|---|
-| `postgres-0`이 `CrashLoopBackOff`·`CreateContainerConfigError` | `CreateContainerConfigError`는 `postgres-secret`이 없다는 뜻이므로 2장부터 다시 합니다. `CrashLoopBackOff`면 `kubectl -n ai-data logs postgres-0`을 봅니다 |
+| `postgres-0`이 `CrashLoopBackOff`·`CreateContainerConfigError` | `CreateContainerConfigError`는 `postgres-secret`이 없다는 뜻이므로 2장부터 다시 합니다 |
 | LiteLLM 파드가 `Init:0/1`에서 오래 머묾 | DB를 기다리는 중입니다. `kubectl -n ai-data get pods`로 `postgres-0`이 `1/1`인지 확인 |
-| LiteLLM 로그에 `password authentication failed` | DB에 저장된 비밀번호와 `litellm-secret`의 접속 주소(`DATABASE_URL`) 속 비밀번호가 어긋났습니다 — DB 디스크는 그대로 두고 Secret을 새로 만들었거나 그 반대입니다. 게이트웨이가 쓰는 값은 `kubectl -n ai-llm get secret litellm-secret -o jsonpath='{.data.DATABASE_URL}' \| base64 -d; echo`의 `litellm:` 뒤, `@` 앞입니다(⚠️ 화면에 비밀번호가 보이므로 화면 공유 중에는 하지 않습니다). DB를 그 값으로 맞춥니다: `kubectl -n ai-data exec -it postgres-0 -- psql -U postgres` → `\password litellm`로 숨겨 입력합니다. SQL에 값을 직접 적지 않습니다. 에이전트가 같은 오류를 내면 `ai-app`의 `agent-secret`과 `\password agent`로, 백업이 실패하면 `postgres-secret`의 `POSTGRES_PASSWORD`와 `\password postgres`로 같은 일을 합니다 |
-| 대화 호출이 `401`·`AuthenticationError` | 게이트웨이가 가진 Claude API 키가 틀렸거나 지워졌습니다. `bash scripts/k3s-server/create-secrets.sh --anthropic`으로 다시 넣습니다 |
+| LiteLLM 로그에 `password authentication failed` | DB에 저장된 비밀번호와 `litellm-secret`의 접속 주소(`DATABASE_URL`) 속 비밀번호가 어긋났습니다 |
+| 대화 호출이 `401`·`AuthenticationError` | 게이트웨이가 가진 Claude API 키가 틀렸거나 지워졌습니다 |
 | 대화 호출이 `402`·`credit balance is too low`·`429`·`529` | Claude API 쪽의 크레딧·호출 한도·과부하입니다. [Claude API 문서 8장](../02-Claude-API/01-Claude-API-키와-모델.md#8-문제-해결) |
-| 대화 호출이 `Connection error`·시간 초과 | 서버가 인터넷으로 나가지 못합니다. `curl -s -o /dev/null -w '%{http_code}\n' -m 10 https://api.anthropic.com/`이 `000`이면 보안 그룹의 아웃바운드 규칙을 확인합니다 |
-| 임베딩 서버가 `OOMKilled`로 재시작 반복 | `kubectl -n ai-llm describe pod -l app=tei`의 `Last State`가 `OOMKilled`인 경우. `k8s/20-tei.yaml`의 실행 옵션에 `--max-batch-tokens 2048`이 있는지 확인합니다 |
-| 임베딩 서버가 30분 넘게 준비 안 됨 | `kubectl -n ai-llm logs deployment/tei`에서 내려받기 오류를 봅니다. 서버가 `huggingface.co`에 닿는지 `curl -I https://huggingface.co` |
-| 모델 표를 고쳤는데 반영이 안 됨 | `kubectl apply` 뒤 `kubectl -n ai-llm rollout restart deployment/litellm`. 게이트웨이는 시작할 때만 표를 읽습니다 |
+| 대화 호출이 `Connection error`·시간 초과 | 서버가 인터넷으로 나가지 못합니다 |
+| 임베딩 서버가 `OOMKilled`로 재시작 반복 | `k8s/20-tei.yaml`의 실행 옵션에 `--max-batch-tokens 2048`이 있는지 확인합니다 |
+| 임베딩 서버가 30분 넘게 준비 안 됨 | `kubectl -n ai-llm logs deployment/tei`에서 내려받기 오류를 봅니다 |
+| 모델 표를 고쳤는데 반영이 안 됨 | `kubectl apply` 뒤 `kubectl -n ai-llm rollout restart deployment/litellm` |
+
+- **`postgres-0`이 `CrashLoopBackOff`·`CreateContainerConfigError`**: `CrashLoopBackOff`면 `kubectl -n ai-data logs postgres-0`을 봅니다.
+- **LiteLLM 로그에 `password authentication failed`**: DB 디스크는 그대로 두고 Secret을 새로 만들었거나 그 반대인 경우입니다.
+  - 게이트웨이가 쓰는 값은 `kubectl -n ai-llm get secret litellm-secret -o jsonpath='{.data.DATABASE_URL}' | base64 -d; echo`의 `litellm:` 뒤, `@` 앞입니다(⚠️ 화면에 비밀번호가 보이므로 화면 공유 중에는 하지 않습니다).
+  - DB를 그 값으로 맞춥니다: `kubectl -n ai-data exec -it postgres-0 -- psql -U postgres` → `\password litellm`로 숨겨 입력합니다. SQL에 값을 직접 적지 않습니다.
+  - 에이전트가 같은 오류를 내면 `ai-app`의 `agent-secret`과 `\password agent`로, 백업이 실패하면 `postgres-secret`의 `POSTGRES_PASSWORD`와 `\password postgres`로 같은 일을 합니다.
+- **대화 호출이 `401`·`AuthenticationError`**: `bash scripts/k3s-server/create-secrets.sh --anthropic`으로 다시 넣습니다.
+- **대화 호출이 `Connection error`·시간 초과**: `curl -s -o /dev/null -w '%{http_code}\n' -m 10 https://api.anthropic.com/`이 `000`이면 보안 그룹의 아웃바운드 규칙을 확인합니다.
+- **임베딩 서버가 `OOMKilled`로 재시작 반복**: `kubectl -n ai-llm describe pod -l app=tei`의 `Last State`가 `OOMKilled`인 경우입니다.
+- **임베딩 서버가 30분 넘게 준비 안 됨**: 서버가 `huggingface.co`에 닿는지 `curl -I https://huggingface.co`로 봅니다.
+- **모델 표를 고쳤는데 반영이 안 됨**: 게이트웨이는 시작할 때만 표를 읽습니다.
 
 다음: [에이전트 구조와 배포](../04-에이전트/01-에이전트-구조와-배포.md)

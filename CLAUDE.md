@@ -36,7 +36,7 @@ Codex는 `AGENTS.md`도 함께 읽는다. 이 저장소는 딸기로컴퍼니의
 | `docs/01-K3s-서버/` | AWS EC2 인스턴스 한 대와 K3s 설치 |
 | `docs/02-Claude-API/` | 대화 모델로 쓰는 Claude API의 키·모델·지출 한도·나가는 글·평가 기준 |
 | `docs/03-플랫폼/` | DB·임베딩 서버·LLM 게이트웨이 |
-| `docs/04-에이전트/` | 에이전트 구조·배포, 트렌드 분석, 자연어 추천, 수집 출처 고르기와 추천 목록, 노코드 도구 Langflow(선택) |
+| `docs/04-에이전트/` | 에이전트 구조·배포, 트렌드 분석, 자연어 추천, 수집 출처 고르기·추천 목록, 노코드 도구 Langflow(선택) |
 | `docs/05-외부-공개/` | AWS 보안 그룹·HTTPS·접근 제한 |
 | `docs/06-관리자-화면-연동/` | 백엔드 중계와 관리자 화면에 붙이는 방법 |
 | `docs/07-운영/` | 점검·요금 확인·백업·되살리기·버전 올리기, Prometheus 알림·별도 Langfuse 설치 |
@@ -45,8 +45,8 @@ Codex는 `AGENTS.md`도 함께 읽는다. 이 저장소는 딸기로컴퍼니의
 | `k8s/` | 쿠버네티스 매니페스트 원본(`${이름}` 자리는 `site.env`가 채움). `k8s/dgx-spark/`는 추후 도입용 |
 | `scripts/` | 값 채우기·빌드·비밀값 스크립트, 관측 설정 검사·별도 Langfuse 초기화, 추후 DGX Spark |
 | `deploy/` | 별도 서버의 Langfuse Compose·HTTPS와 CloudFormation 호스트 경보. 실제 `.env`는 Git 제외·권한 600 |
-| `tests/` | 경보 규칙의 시계열 시험(`monitoring/alerts.test.yaml`). `scripts/observability/check-configs.py`가 읽는다 |
-| `BOX/` | 연구개발계획서 원본(pptx). 로컬에만 보관하고 Git·공개 저장소·서버 복사에서 제외한다. 원본은 고치지 않는다 |
+| `tests/` | 경보 규칙 시계열 시험(`monitoring/alerts.test.yaml`). `scripts/observability/check-configs.py`가 읽는다 |
+| `BOX/` | 연구개발계획서 원본(pptx). 로컬에만 보관하고 Git·공개 저장소·서버 복사에서 제외한다. 고치지 않는다 |
 | `PROJECT_STATE.md` | 현재 상태·남은 일·변경 기록 |
 
 - 이 저장소에는 AI 에이전트 구성에 관한 내용만 둔다. 딸기로 시스템의 설치·배포·운영·코드 설명은 `../ddalgiro-guide/docs/`가 원본이므로 복사하지 않고 상대 링크로 연결한다.

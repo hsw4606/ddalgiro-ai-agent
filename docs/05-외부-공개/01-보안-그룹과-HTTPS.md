@@ -23,9 +23,11 @@ flowchart LR
 | 포트 | 보안 그룹 | 이유 |
 |---|---|---|
 | 443 (HTTPS) | ✅ 백엔드 서버 IP와 확인용 IP만 | API 호출 |
-| 80 (HTTP) | ✅ 누구나(`0.0.0.0/0`) | 인증서 발급·갱신 때 Let's Encrypt가 확인하러 옵니다(어느 IP에서 올지 정해져 있지 않음). API는 80으로 받지 않습니다 |
+| 80 (HTTP) | ✅ 누구나(`0.0.0.0/0`) | 인증서 발급·갱신 때 Let's Encrypt가 확인하러 옵니다. API는 80으로 받지 않습니다 |
 | 22 (SSH) | 내 IP만 ([K3s 서버 문서 1장](../01-K3s-서버/01-EC2-인스턴스와-K3s.md#1-ec2-인스턴스-만들기)에서 넣음) | 서버 관리 |
 | 6443 (쿠버네티스) · 5432 (DB) · 4000 (게이트웨이) | ❌ 넣지 않음 | 서버에 SSH로 들어가서만 씁니다 |
+
+- **80 (HTTP)**: Let's Encrypt가 어느 IP에서 올지 정해져 있지 않습니다.
 
 허용 IP는 **두 곳**에서 확인합니다. 보안 그룹이 먼저 막고, 통과한 요청을 Traefik의 IP 허용 목록이 한 번 더 확인합니다. 한 곳의 설정이 잘못돼도 다른 한 곳이 막습니다.
 
@@ -196,11 +198,17 @@ bash scripts/render.sh && kubectl apply -f rendered/41-ingress.yaml
 | 증상 | 원인과 해결 |
 |---|---|
 | 밖에서 80·443 모두 시간 초과 | 4장의 보안 그룹 규칙, 인스턴스가 `실행 중`인지, 2장의 탄력적 IP, 3장의 DNS(`dig +short`) |
-| 80은 되고 443만 시간 초과 | 부르는 곳의 IP가 보안 그룹의 443 규칙에 없습니다. 그 자리에서 `curl -s https://checkip.amazonaws.com`으로 IP를 확인합니다 |
-| 인증서가 계속 `False` | `kubectl get challenges -A`와 `kubectl -n cert-manager logs deployment/cert-manager \| tail -30`. DNS가 다른 IP를 가리키는지(`dig +short`), 80 규칙이 `0.0.0.0/0`인지도 확인 |
-| 허용한 IP인데 `403` | 보안 그룹은 지났지만 Traefik의 허용 목록에 없습니다. `site.env`의 `ALLOW_IP_*`와 8장의 ⚠️(진짜 IP 전달)를 확인합니다 |
-| `429 Too Many Requests` | 호출 제한에 걸린 것입니다(1분 평균 60회, 순간 30회). 정상적인 사용에서 걸리면 `k8s/41-ingress.yaml`의 `rate-limit` 값을 올립니다 |
-| 며칠 뒤 갑자기 접속 불가 | 인스턴스가 중지됐거나 탄력적 IP 연결이 풀린 경우. EC2 콘솔에서 상태를 보고 `dig +short`와 2장의 명령 결과를 비교합니다 |
+| 80은 되고 443만 시간 초과 | 부르는 곳의 IP가 보안 그룹의 443 규칙에 없습니다 |
+| 인증서가 계속 `False` | `kubectl get challenges -A`와 `kubectl -n cert-manager logs deployment/cert-manager \| tail -30` |
+| 허용한 IP인데 `403` | 보안 그룹은 지났지만 Traefik의 허용 목록에 없습니다 |
+| `429 Too Many Requests` | 호출 제한에 걸린 것입니다(1분 평균 60회, 순간 30회) |
+| 며칠 뒤 갑자기 접속 불가 | 인스턴스가 중지됐거나 탄력적 IP 연결이 풀린 경우 |
 | 브라우저가 인증서를 신뢰하지 않음 | 아직 연습용 인증서입니다(7장) |
+
+- **80은 되고 443만 시간 초과**: 그 자리에서 `curl -s https://checkip.amazonaws.com`으로 IP를 확인합니다.
+- **인증서가 계속 `False`**: DNS가 다른 IP를 가리키는지(`dig +short`), 80 규칙이 `0.0.0.0/0`인지도 확인합니다.
+- **허용한 IP인데 `403`**: `site.env`의 `ALLOW_IP_*`와 8장의 ⚠️(진짜 IP 전달)를 확인합니다.
+- **`429 Too Many Requests`**: 정상적인 사용에서 걸리면 `k8s/41-ingress.yaml`의 `rate-limit` 값을 올립니다.
+- **며칠 뒤 갑자기 접속 불가**: EC2 콘솔에서 상태를 보고 `dig +short`와 2장의 명령 결과를 비교합니다.
 
 다음: [백엔드 중계와 관리자 화면](../06-관리자-화면-연동/01-백엔드-중계와-관리자-화면.md)

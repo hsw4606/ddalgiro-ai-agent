@@ -44,11 +44,13 @@ flowchart LR
 | 막는 것 | 설정 | 막혔을 때 보이는 글 |
 |---|---|---|
 | 로그인하지 않은 사람의 가입 | `LANGFLOW_ENABLE_SIGNUP=false`. 관리자 계정 하나만 둡니다 | `Public user registration is disabled.` |
-| 흐름이 내부망 주소를 부르기 — 서버 자신, AWS가 서버 정보를 주는 주소(169.254.169.254), DB, 쿠버네티스 관리 주소 | `LANGFLOW_SSRF_PROTECTION_ENABLED=true`. 게이트웨이(`litellm.ai-llm.svc`)와 에이전트(`agent-api.ai-app.svc`)만 열어 둡니다. API Request 블록과 모델 블록의 주소 칸 모두에 걸립니다 | `SSRF Protection: Hostname … resolves to blocked IP address(es)` |
+| 흐름이 내부망 주소를 부르기 | `LANGFLOW_SSRF_PROTECTION_ENABLED=true` | `SSRF Protection: Hostname … resolves to blocked IP address(es)` |
 | 새로 짠 블록(파이썬 코드) | `LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false` | `Custom component creation is disabled` |
-| 내장 블록의 코드를 고쳐 돌리기 | 같은 설정. 고친 코드 대신 서버의 원래 코드로 돕니다 | (오류 없이 원래대로 돎. 서버 기록에 `ran this server's component code … instead of the code stored in the flow`) |
+| 내장 블록의 코드를 고쳐 돌리기 | 같은 설정. 고친 코드 대신 서버의 원래 코드로 돕니다 | 오류 없이 돎. 서버 기록에 `ran this server's component code … instead of the code stored in the flow` |
 | 파이썬 실행 블록(Python Interpreter·Python REPL·Python Function) | `LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true` | `Flow build blocked: code-execution components are not allowed` |
 | 사용 통계 보내기 | `LANGFLOW_DO_NOT_TRACK=true` | — |
+
+- **흐름이 내부망 주소를 부르기**: 서버 자신, AWS가 서버 정보를 주는 주소(169.254.169.254), DB, 쿠버네티스 관리 주소를 막습니다. 게이트웨이(`litellm.ai-llm.svc`)와 에이전트(`agent-api.ai-app.svc`)만 열어 둡니다. API Request 블록과 모델 블록의 주소 칸 모두에 걸립니다.
 
 ## 2. 올리기
 
@@ -193,10 +195,13 @@ Langflow 화면의 설정(Settings) → 전역 변수(Global Variables) → 추�
 
 | 하려는 일 | 방법 |
 |---|---|
-| 흐름을 보관 | 흐름 화면의 내보내기(Export)로 JSON 파일을 받아 둡니다. 전역 변수의 값은 파일에 들어가지 않지만, 5-3의 `X-AI-Key`는 들어가므로 먼저 지웁니다 |
+| 흐름을 보관 | 흐름 화면의 내보내기(Export)로 JSON 파일을 받아 둡니다 |
 | 직원이 계속 쓰는 내부 도구로 | 그대로 둡니다. 쓰는 사람은 3장의 터널로 접속합니다 |
-| 업체·고객에게 나가는 기능으로 | `agent/`의 코드로 옮깁니다 — 숫자는 코드와 SQL로, 모델의 글은 `grounding.py`의 근거 검사를 거치게, 규칙 시험을 붙여서([에이전트 문서의 원칙](01-에이전트-구조와-배포.md#지키는-원칙-세-가지)) |
+| 업체·고객에게 나가는 기능으로 | `agent/`의 코드로 옮깁니다([에이전트 문서의 원칙](01-에이전트-구조와-배포.md#지키는-원칙-세-가지)) |
 | 관리자 화면에 붙이기 | 다루지 않습니다. Langflow를 바깥에 열어야 하므로, 위처럼 코드로 옮긴 뒤 [백엔드 중계](../06-관리자-화면-연동/01-백엔드-중계와-관리자-화면.md)로 붙입니다 |
+
+- **흐름을 보관**: 전역 변수의 값은 파일에 들어가지 않지만, 5-3의 `X-AI-Key`는 들어가므로 먼저 지웁니다.
+- **업체·고객에게 나가는 기능으로**: 숫자는 코드와 SQL로, 모델의 글은 `grounding.py`의 근거 검사를 거치게, 규칙 시험을 붙여서 옮깁니다.
 
 ## 7. 서버 용량
 
@@ -220,28 +225,40 @@ Langflow 화면의 설정(Settings) → 전역 변수(Global Variables) → 추�
 
 | 하려는 일 | 방법 |
 |---|---|
-| 자료 백업 | 흐름·전역 변수·대화 기록은 디스크의 SQLite 파일에 있으며 PostgreSQL 덤프에는 없습니다. [디스크 스냅샷](../07-운영/01-점검-백업-문제-해결.md#4-2-백업을-서버-밖에-두기--디스크-스냅샷)에 담긴 파일의 복원은 별도 확인이 필요합니다. 이 가이드의 DB 복원 절차는 PostgreSQL만 다룹니다. Secret은 [비밀값 따로 보관하기](../07-운영/01-점검-백업-문제-해결.md#4-3-비밀값-따로-보관하기)에 넣습니다 |
-| 새 설치로 흐름 복구 | 키를 뺀 Export JSON을 Langflow의 Import로 넣고, 전역 변수·API 헤더 키를 비밀값 보관본으로 다시 등록합니다. JSON 내보내기만으로 관리자 계정·대화 기록·저장 자료 전체가 복구되지는 않습니다 |
+| 자료 백업 | 흐름·전역 변수·대화 기록은 디스크의 SQLite 파일에 있으며 PostgreSQL 덤프에는 없습니다 |
+| 새 설치로 흐름 복구 | 키를 뺀 Export JSON을 Import로 넣고, 전역 변수·API 헤더 키를 비밀값 보관본으로 다시 등록합니다 |
 | 다시 시작 | `kubectl -n ai-app rollout restart deployment/langflow`. 흐름·전역 변수·관리자 비밀번호는 그대로입니다 |
-| 버전 올리기 | `k8s/60-langflow.yaml`의 이미지 태그와 [버전 고정표](../00-개요/02-준비물과-정할-값.md#5-버전-고정표)를 고치고 `render.sh` → `kubectl apply`. 올리기 전에 키를 뺀 흐름을 내보내고, Langflow를 중지한 상태의 디스크 스냅샷과 기존 Secret을 함께 보관합니다. 해당 버전의 바뀐 점에서 막아 둔 설정(1장의 표)의 이름이 바뀌지 않았는지 봅니다 |
+| 버전 올리기 | `k8s/60-langflow.yaml`의 이미지 태그와 [버전 고정표](../00-개요/02-준비물과-정할-값.md#5-버전-고정표)를 고치고 `render.sh` → `kubectl apply` |
 | 잠시 끄기 | `kubectl -n ai-app scale deployment/langflow --replicas=0` (자료는 남습니다). 다시 켜려면 `--replicas=1` |
-| 지우기 | `kubectl delete -f rendered/60-langflow.yaml` — ⚠️ 디스크의 흐름과 전역 변수도 지워집니다. Secret은 `kubectl -n ai-app delete secret langflow-secret`, 게이트웨이 키는 게이트웨이 관리 화면에서 `langflow`를 지웁니다 |
+| 지우기 | `kubectl delete -f rendered/60-langflow.yaml` — ⚠️ 디스크의 흐름과 전역 변수도 지워집니다 |
+
+- **자료 백업**: [디스크 스냅샷](../07-운영/01-점검-백업-문제-해결.md#4-2-백업을-서버-밖에-두기--디스크-스냅샷)에 담긴 파일의 복원은 별도 확인이 필요합니다. 이 가이드의 DB 복원 절차는 PostgreSQL만 다룹니다. Secret은 [비밀값 따로 보관하기](../07-운영/01-점검-백업-문제-해결.md#4-3-비밀값-따로-보관하기)에 넣습니다.
+- **새 설치로 흐름 복구**: JSON 내보내기만으로 관리자 계정·대화 기록·저장 자료 전체가 복구되지는 않습니다.
+- **버전 올리기**: 올리기 전에 키를 뺀 흐름을 내보내고, Langflow를 중지한 상태의 디스크 스냅샷과 기존 Secret을 함께 보관합니다. 해당 버전의 바뀐 점에서 막아 둔 설정(1장의 표)의 이름이 바뀌지 않았는지 봅니다.
+- **지우기**: Secret은 `kubectl -n ai-app delete secret langflow-secret`, 게이트웨이 키는 게이트웨이 관리 화면에서 `langflow`를 지웁니다.
 
 ## 9. 문제 해결
 
 | 증상 | 원인과 해결 |
 |---|---|
 | 파드가 `CreateContainerConfigError` | Secret이 없습니다. 2장의 첫 명령(`--langflow`)을 실행합니다 |
-| 파드가 오래 `0/1 Running` | 첫 기동은 몇 분 걸립니다(2장). `kubectl -n ai-app logs deployment/langflow -f`에서 `Running upgrade …`(DB 만들기)가 이어지면 기다립니다. 15분이 넘으면 재시작됩니다 |
-| 전역 변수 저장이 `Fernet key must be 32 url-safe base64-encoded bytes` | Secret의 `LANGFLOW_SECRET_KEY`가 맞는 형식이 아닙니다(44자 base64여야 함). 저장해 둔 변수가 없을 때만, Secret을 지우고 2장의 첫 명령으로 다시 만든 뒤 `rollout restart` 합니다 |
-| 로그인이 `401` | 비밀번호가 틀렸습니다. Secret의 값을 다시 읽습니다. Secret을 만든 뒤 처음 띄운 것이 아니라면(디스크에 이미 계정이 있었다면) 그때의 비밀번호가 그대로입니다(3장) |
+| 파드가 오래 `0/1 Running` | 첫 기동은 몇 분 걸립니다(2장). 15분이 넘으면 재시작됩니다 |
+| 전역 변수 저장이 `Fernet key must be 32 url-safe base64-encoded bytes` | Secret의 `LANGFLOW_SECRET_KEY`가 맞는 형식이 아닙니다(44자 base64여야 함) |
+| 로그인이 `401` | 비밀번호가 틀렸습니다. Secret의 값을 다시 읽습니다 |
 | 로그인이 `429` | 1분 안에 5번 넘게 시도했습니다. 1분 기다립니다 |
-| 브라우저가 `localhost:7860`에 닿지 않음 | 3장의 두 터미널이 모두 떠 있는지 확인합니다. 내 맥의 다른 프로그램이 7860을 쓰면 `ssh -L 7861:localhost:7860 ddalgiro-ai`로 열고 `localhost:7861`로 들어갑니다 |
-| 흐름이 `SSRF Protection: Hostname … resolves to blocked IP` | 막아 둔 주소입니다(1장). 게이트웨이·에이전트 주소라면 이름을 `litellm.ai-llm.svc`·`agent-api.ai-app.svc`로 글자 그대로 적었는지 봅니다 |
+| 브라우저가 `localhost:7860`에 닿지 않음 | 3장의 두 터미널이 모두 떠 있는지 확인합니다 |
+| 흐름이 `SSRF Protection: Hostname … resolves to blocked IP` | 막아 둔 주소입니다(1장) |
 | 흐름이 `Flow build blocked: code-execution components are not allowed` | 파이썬 실행 블록을 썼습니다. 막아 둔 블록이므로 다른 블록으로 바꿉니다 |
 | 모델 호출이 `key_model_access_denied` | `Model Name`에 이름표(`chat-fast`·`chat-smart`)가 아닌 것을 적었습니다 |
-| 모델 호출이 `Budget has been exceeded` | 4장의 30일 한도에 닿았습니다. 쓴 내역을 보고, 필요하면 관리 화면에서 기존 키의 예산을 조정합니다(4장). 재발급하면 사용액도 초기화됩니다 |
+| 모델 호출이 `Budget has been exceeded` | 4장의 30일 한도에 닿았습니다. 쓴 내역을 보고, 필요하면 관리 화면에서 기존 키의 예산을 조정합니다 |
 | 모델 호출이 `Invalid API key` | 키를 다시 만들었는데 Langflow의 전역 변수는 옛 키입니다. 5-1의 `GATEWAY_KEY`를 새 키로 고칩니다 |
 | 에이전트 API가 `401` | 5-3의 머리말에서 Header가 `X-AI-Key`인지, Value가 지금의 키인지 확인합니다 |
+
+- **파드가 오래 `0/1 Running`**: `kubectl -n ai-app logs deployment/langflow -f`에서 `Running upgrade …`(DB 만들기)가 이어지면 기다립니다.
+- **전역 변수 저장이 `Fernet key …`**: 저장해 둔 변수가 없을 때만, Secret을 지우고 2장의 첫 명령으로 다시 만든 뒤 `rollout restart` 합니다.
+- **로그인이 `401`**: Secret을 만든 뒤 처음 띄운 것이 아니라면(디스크에 이미 계정이 있었다면) 그때의 비밀번호가 그대로입니다(3장).
+- **브라우저가 `localhost:7860`에 닿지 않음**: 내 맥의 다른 프로그램이 7860을 쓰면 `ssh -L 7861:localhost:7860 ddalgiro-ai`로 열고 `localhost:7861`로 들어갑니다.
+- **흐름이 `SSRF Protection: …`**: 게이트웨이·에이전트 주소라면 이름을 `litellm.ai-llm.svc`·`agent-api.ai-app.svc`로 글자 그대로 적었는지 봅니다.
+- **모델 호출이 `Budget has been exceeded`**: 예산을 조정하는 방법은 4장에 있습니다. 재발급하면 사용액도 초기화됩니다.
 
 다음: [보안 그룹과 HTTPS](../05-외부-공개/01-보안-그룹과-HTTPS.md)

@@ -14,7 +14,7 @@ DGX Spark(NVIDIA GB10 · 통합 메모리 128GB · ARM64)는 대화 모델 하�
 
 | 들이는 이유 | 설명 |
 |---|---|
-| 글을 회사 밖으로 보낼 수 없게 됨 | 입점사·고객사와의 계약이나 내부 규정이 문의 글·공급 조건을 외부 서비스에 넘기는 것을 막는 경우([무엇이 나가나](../02-Claude-API/01-Claude-API-키와-모델.md#5-무엇이-서버-밖으로-나가나)) |
+| 글을 회사 밖으로 보낼 수 없게 됨 | 입점사·고객사와의 계약·내부 규정이 문의 글·공급 조건의 외부 서비스 전달을 막을 때([무엇이 나가나](../02-Claude-API/01-Claude-API-키와-모델.md#5-무엇이-서버-밖으로-나가나)) |
 | 모델을 직접 학습시킴 | 연구개발계획서의 뒤 단계인 도메인 특화 모델 |
 | 평가를 같은 모델로 오래 되풀이해야 함 | 내려받은 모델 파일은 바뀌지 않습니다. Claude API의 모델은 예고 뒤 종료됩니다 |
 | Claude API 요금이 장비 값을 넘어섬 | 처리량이 크게 늘었을 때. 지금 어림으로는 장비 값을 채우는 데 약 32개월이 걸립니다([월 비용 계산 5장](../00-개요/04-월-비용-계산.md#5-포함하지-않은-것과-견줄-것)) |
@@ -33,9 +33,10 @@ flowchart LR
 |---|---|
 | 모델 운영 없음, 쓴 만큼 요금 | 장비 값 + 전기, 모델 서버를 직접 운영(업데이트·고장·정전) |
 | 한국어 품질이 높은 상용 모델 | 128GB에 들어가는 공개 모델. 한국어 품질을 직접 재야 함([8장](#8-모델-고르기)) |
-| 문의 글·근거가 Anthropic으로 나감 | 대화 이름표를 모두 옮기고 외부 대체 호출을 끄면 Anthropic으로 보내지 않음. 자료는 여전히 AWS의 DB·에이전트·게이트웨이를 거쳐 사무실로 전달됨 |
+| 문의 글·근거가 Anthropic으로 나감 | 대화 이름표를 모두 옮기고 외부 대체 호출을 끄면 Anthropic으로 보내지 않음 |
 | 인터넷만 있으면 됨 | AWS의 K3s 서버와 사무실 장비를 잇는 연결이 필요(2장) |
 
+- **문의 글·근거가 Anthropic으로 나감**: 옮긴 뒤에도 자료는 여전히 AWS의 DB·에이전트·게이트웨이를 거쳐 사무실로 전달됩니다.
 - **vLLM**: 대화 모델을 메모리에 올려 두고, 여러 요청을 묶어 빠르게 답하는 모델 서버입니다. OpenAI와 같은 형식의 API(`/v1/chat/completions`)를 엽니다.
 - DGX Spark는 모델 하나만 서빙합니다(NVIDIA 권장: 한 번에 모델 앱 하나). 쿠버네티스에 넣지 않고 Docker로 띄웁니다. 임베딩은 지금처럼 K3s 서버의 CPU에서 돕니다.
 - 두 가지를 섞을 수도 있습니다 — 이름표 하나만 DGX Spark로 돌리거나, DGX Spark가 멈췄을 때 Claude API로 넘기는 것입니다([9장](#9-게이트웨이를-dgx-spark로-돌리기)). 이 경우 해당 호출의 글은 여전히 Anthropic으로 나갑니다. **AWS를 포함해 회사 밖 처리를 금지하는 조건이라면 대화 모델만 옮겨서는 충족되지 않습니다.**
@@ -46,10 +47,12 @@ flowchart LR
 
 | 방법 | 내용 | 살필 점 |
 |---|---|---|
-| 사설 연결(VPN) — 권장 | K3s 서버와 DGX Spark에 WireGuard 같은 사설망 프로그램을 깔아 둘만 통하는 길을 만듭니다. 게이트웨이는 DGX Spark의 사설 주소를 부릅니다 | 사무실 공유기에 들어오는 포트를 열지 않아도 됩니다(DGX Spark가 밖으로 연결을 겁니다). 사무실 회선이 끊기면 모델도 끊깁니다 |
-| 공유기 포트 포워딩 | 사무실 공유기에서 포트 하나를 DGX Spark로 넘기고, K3s 서버의 탄력적 IP만 들어오게 막습니다 | 모델 서버는 평문 HTTP라 HTTPS 종료 지점과 인증서 검증이 추가로 필요합니다. 9장의 HTTP Service 예시는 이 방식에 그대로 쓸 수 없습니다 |
+| 사설 연결(VPN) — 권장 | K3s 서버와 DGX Spark에 WireGuard 같은 사설망 프로그램을 깔아 둘만 통하는 길을 만듭니다 | 사무실 공유기에 들어오는 포트를 열지 않아도 됩니다(DGX Spark가 밖으로 연결을 겁니다) |
+| 공유기 포트 포워딩 | 사무실 공유기에서 포트 하나를 DGX Spark로 넘기고, K3s 서버의 탄력적 IP만 들어오게 막습니다 | 모델 서버는 평문 HTTP라 HTTPS 종료 지점과 인증서 검증이 추가로 필요합니다 |
 | 게이트웨이와 에이전트도 사무실로 | K3s 서버를 통째로 사무실 장비로 옮깁니다 | AWS를 쓰는 이점을 잃습니다. 구성을 다시 정해야 합니다 |
 
+- **사설 연결(VPN) — 권장**: 게이트웨이는 DGX Spark의 사설 주소를 부릅니다. 사무실 회선이 끊기면 모델도 끊깁니다.
+- **공유기 포트 포워딩**: 9장의 HTTP Service 예시는 이 방식에 그대로 쓸 수 없습니다.
 - 어느 방법이든 `site.env`의 `DGX_SPARK_IP`에는 **K3s 서버에서 DGX Spark로 닿는 주소**를 넣습니다. 사설 연결이면 그 연결 위의 DGX Spark 주소입니다.
 - 사무실 회선·정전이 새 고장 지점이 됩니다. Claude API를 예비로 남겨 두는 방법을 함께 검토합니다(9장).
 
@@ -159,8 +162,11 @@ curl -s http://localhost:8000/v1/chat/completions \
 | 줄 | 기대 결과 |
 |---|---|
 | 2 (`/health`) | `200` |
-| 3 (키 없이 `/v1/models`) | `401`. ⚠️ **`200`이 나오면 키가 적용되지 않은 것**입니다. 다음 장으로 넘어가지 말고 [문제 해결](#10-문제-해결)의 "키 없이도 200"을 봅니다 |
-| 4 (대화) | `choices` 안에 한국어 답이 든 JSON. `content`가 `null`이고 `finish_reason`이 `length`면 `max_tokens`를 더 크게 줍니다(모델이 생각 과정에 토큰을 먼저 씁니다) |
+| 3 (키 없이 `/v1/models`) | `401`. ⚠️ **`200`이 나오면 키가 적용되지 않은 것**입니다 |
+| 4 (대화) | `choices` 안에 한국어 답이 든 JSON |
+
+- **3 (키 없이 `/v1/models`)**: `200`이 나오면 다음 장으로 넘어가지 말고 [문제 해결](#10-문제-해결)의 "키 없이도 200"을 봅니다.
+- **4 (대화)**: `content`가 `null`이고 `finish_reason`이 `length`면 `max_tokens`를 더 크게 줍니다(모델이 생각 과정에 토큰을 먼저 씁니다).
 
 ## 7. 방화벽과 K3s 서버에서 확인
 
@@ -226,9 +232,13 @@ docker ps --format '{{.Names}} {{.Status}}'
 
 | 순서 | 후보 | 선택 이유와 한계 |
 |---|---|---|
-| 1 — 현재 기준 모델 | `nvidia/Qwen3.8-27B-NVFP4` + 현재 DFlash2 | NVIDIA의 128GB 실행 조합을 유지할 수 있습니다. 한국어 조건 정확도·문체·속도가 합격하면 유지합니다. 초안 모델은 속도를 돕는 역할이며 한국어 품질을 별도로 높이는 모델이 아닙니다 |
-| 2 — 첫 교체 비교 | `google/gemma-4-26B-A4B-it`, BF16 | [Google 모델](https://huggingface.co/google/gemma-4-26B-A4B-it)은 Apache 2.0이며, MoE(입력마다 모델 일부를 쓰는 구조)로 약 4B가 동작합니다. 가중치는 단순 계산으로 약 52GB라 128GB에서 시험할 여지가 있습니다. [vLLM 실행 안내](https://docs.vllm.ai/projects/recipes/en/stable/Google/Gemma4.html)가 있지만, 현재 ARM64·GB10 이미지에서의 기동·JSON 출력·한국어·실제 속도는 따로 확인해야 합니다 |
-| 3 — 한국어 중심 추가 비교 | `kakaocorp/kanana-2-30b-a3b-instruct-2601`, BF16 | [카카오의 공식 평가](https://huggingface.co/kakaocorp/kanana-2-30b-a3b-instruct-2601#instruct-model-evaluation-results)에 한국어 대화·지식·지시 이행 결과와 vLLM 실행 방법이 있습니다. 약 31B 전체 가중치는 약 62GB로 추정되며, 토큰마다 약 3B를 쓰는 MoE입니다. [이용 조건](https://huggingface.co/kakaocorp/kanana-2-30b-a3b-instruct-2601/blob/main/LICENSE) 3·4절의 표시 의무와 모델 API 제공·재판매 등에 대한 별도 계약 조건을 서비스 방식에 맞춰 확인해야 합니다 |
+| 1 — 현재 기준 모델 | `nvidia/Qwen3.8-27B-NVFP4` + 현재 DFlash2 | NVIDIA의 128GB 실행 조합을 유지할 수 있습니다 |
+| 2 — 첫 교체 비교 | `google/gemma-4-26B-A4B-it`, BF16 | [Google 모델](https://huggingface.co/google/gemma-4-26B-A4B-it)은 Apache 2.0이며, MoE(입력마다 모델 일부를 쓰는 구조)로 약 4B가 동작합니다 |
+| 3 — 한국어 중심 추가 비교 | `kakaocorp/kanana-2-30b-a3b-instruct-2601`, BF16 | [카카오의 공식 평가](https://huggingface.co/kakaocorp/kanana-2-30b-a3b-instruct-2601#instruct-model-evaluation-results)에 한국어 대화·지식·지시 이행 결과와 vLLM 실행 방법이 있습니다 |
+
+- **1 — 현재 기준 모델**: 한국어 조건 정확도·문체·속도가 합격하면 유지합니다. 초안 모델은 속도를 돕는 역할이며 한국어 품질을 별도로 높이는 모델이 아닙니다.
+- **2 — 첫 교체 비교**: 가중치는 단순 계산으로 약 52GB라 128GB에서 시험할 여지가 있습니다. [vLLM 실행 안내](https://docs.vllm.ai/projects/recipes/en/stable/Google/Gemma4.html)가 있지만, 현재 ARM64·GB10 이미지에서의 기동·JSON 출력·한국어·실제 속도는 따로 확인해야 합니다.
+- **3 — 한국어 중심 추가 비교**: 약 31B 전체 가중치는 약 62GB로 추정되며, 토큰마다 약 3B를 쓰는 MoE입니다. [이용 조건](https://huggingface.co/kakaocorp/kanana-2-30b-a3b-instruct-2601/blob/main/LICENSE) 3·4절의 표시 의무와 모델 API 제공·재판매 등에 대한 별도 계약 조건을 서비스 방식에 맞춰 확인해야 합니다.
 
 Gemma 4 31B도 [NVIDIA가 DGX Spark 실행을 안내](https://developer.nvidia.com/blog/bringing-ai-closer-to-the-edge-and-on-device-with-gemma-4/)합니다. 다만 모든 층을 쓰는 31B 모델이 메모리에 들어간다는 사실만으로 응답이 빨라지지는 않습니다. 이 프로젝트는 짧은 조건 추출과 추천 사유가 많으므로, 교체 비교는 26B-A4B부터 시작합니다. 이는 구조와 업무 특성에 따른 판단이며, Qwen보다 빠르거나 한국어가 더 정확하다고 실측한 결과는 아닙니다.
 
@@ -300,14 +310,20 @@ kubectl -n ai-llm run curl-check --rm -i --restart=Never --image=curlimages/curl
 
 | 증상 | 원인과 해결 |
 |---|---|
-| 키 없이도 `/v1/models`가 `200` | 이 이미지가 `VLLM_API_KEY` 환경 변수를 읽지 않는 경우. `vllm-start.sh`의 `--port "$PORT" \` 아랫줄에 `--api-key "$VLLM_API_KEY" \`를 넣고 다시 실행합니다. 그래도 `200`이면 7-1의 방화벽이 켜져 있는지(`sudo ufw status`) 확인하고, 2장의 길을 열지 않습니다 |
-| 컨테이너가 곧 죽음 (`docker ps`에 없음) | `docker logs vllm`의 마지막 줄을 봅니다. 모델 파일을 못 찾으면 `vllm.env`의 `HF_TOKEN`과 모델 이름, 디스크 여유(`df -h ~`)를 확인 |
-| `CUDA out of memory` | 다른 모델 앱(Ollama·ComfyUI 등)이 떠 있으면 끕니다. 그래도 나면 NVIDIA 안내대로 캐시를 비웁니다: `sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'` |
-| 시작 중 기기가 멈춤 | `--gpu-memory-utilization`을 올렸는지 확인합니다. NVIDIA 레시피는 0.60이며 0.70·0.85에서 문제가 있었다고 기록합니다 |
+| 키 없이도 `/v1/models`가 `200` | 이 이미지가 `VLLM_API_KEY` 환경 변수를 읽지 않는 경우 |
+| 컨테이너가 곧 죽음 (`docker ps`에 없음) | `docker logs vllm`의 마지막 줄을 봅니다 |
+| `CUDA out of memory` | 다른 모델 앱(Ollama·ComfyUI 등)이 떠 있으면 끕니다 |
+| 시작 중 기기가 멈춤 | `--gpu-memory-utilization`을 올렸는지 확인합니다 |
 | GPU 오류로 컨테이너가 뜨지 않음 | `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker` |
 | 포트 8000을 이미 쓰는 중 | `vllm.env`의 `VLLM_PORT`를 `8001`로, K3s 쪽 `site.env`의 `DGX_SPARK_PORT`와 방화벽 규칙도 `8001`로 바꿉니다 |
-| K3s 서버에서 `/health`가 시간 초과 | 2장의 길(사설 연결)이 살아 있는지, DGX Spark의 IP가 바뀌었는지(`ip -br addr`), 방화벽 둘째 줄의 주소가 K3s 서버가 들어오는 주소인지 확인 |
+| K3s 서버에서 `/health`가 시간 초과 | 2장의 길(사설 연결)이 살아 있는지, DGX Spark의 IP가 바뀌었는지(`ip -br addr`) 확인 |
 | 답이 영어로만 나오거나 한국어가 어색함 | 모델의 한계일 수 있습니다. 8장의 후보로 바꿔 비교하거나 Claude API로 되돌립니다 |
+
+- **키 없이도 `/v1/models`가 `200`**: `vllm-start.sh`의 `--port "$PORT" \` 아랫줄에 `--api-key "$VLLM_API_KEY" \`를 넣고 다시 실행합니다. 그래도 `200`이면 7-1의 방화벽이 켜져 있는지(`sudo ufw status`) 확인하고, 2장의 길을 열지 않습니다.
+- **컨테이너가 곧 죽음 (`docker ps`에 없음)**: 모델 파일을 못 찾으면 `vllm.env`의 `HF_TOKEN`과 모델 이름, 디스크 여유(`df -h ~`)를 확인합니다.
+- **`CUDA out of memory`**: 앱을 끈 뒤에도 나면 NVIDIA 안내대로 캐시를 비웁니다: `sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'`
+- **시작 중 기기가 멈춤**: NVIDIA 레시피는 0.60이며 0.70·0.85에서 문제가 있었다고 기록합니다.
+- **K3s 서버에서 `/health`가 시간 초과**: 방화벽 둘째 줄의 주소가 K3s 서버가 들어오는 주소인지도 확인합니다.
 
 ## 11. 버전
 
@@ -317,4 +333,6 @@ kubectl -n ai-llm run curl-check --rm -i --restart=Never --image=curlimages/curl
 |---|---|---|---|
 | vLLM 이미지 | `nvcr.io/nvidia/vllm:26.10.pre1-py3` | `scripts/dgx-spark/vllm.env.example` | **확인하지 못함** — DGX Spark가 있어야 합니다 |
 | 대화 모델 | `nvidia/Qwen3.8-27B-NVFP4` + 초안 모델 `z-lab/Qwen3.8-27B-DFlash2` | 〃 | **확인하지 못함**. NVIDIA가 DGX Spark 128GB용으로 2026-10-19에 확인한 조합입니다 |
-| DGX Spark 연결 | `k8s/dgx-spark/21-dgx-spark.yaml`, 9장의 모델 표 | `site.env`의 `DGX_SPARK_IP`가 있을 때 `render.sh`가 만듦 | 시험용 클러스터(k3d)에서 클러스터 밖의 로컬 모델 서버(Ollama)로 연결·이름표 호출 확인. 값 채우기는 DGX 값이 있을 때·없을 때 모두 확인 |
+| DGX Spark 연결 | `k8s/dgx-spark/21-dgx-spark.yaml`, 9장의 모델 표 | `site.env`의 `DGX_SPARK_IP`가 있을 때 `render.sh`가 만듦 | 시험용 클러스터(k3d)에서 클러스터 밖의 로컬 모델 서버(Ollama)로 연결·이름표 호출 확인 |
+
+- **DGX Spark 연결**: 값 채우기는 DGX 값이 있을 때·없을 때 모두 확인했습니다.
