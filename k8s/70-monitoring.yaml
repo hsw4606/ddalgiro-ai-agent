@@ -1,0 +1,579 @@
+# 운영 지표·알림 — AI 서버 내부 전용. 설치·확인: docs/07-운영/02-모니터링과-AI-추적.md
+# ai-observe 네임스페이스와 Alertmanager Secret 이 먼저 필요하다.
+# Prometheus 설정과 알림 규칙. 문의·사용자 번호를 라벨에 넣지 않는다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: ai-observe
+data:
+  prometheus.yaml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+    rule_files:
+    - /etc/prometheus/alerts.yaml
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager:9093
+    scrape_configs:
+    - job_name: prometheus
+      static_configs:
+      - targets:
+        - localhost:9090
+    - job_name: alertmanager
+      static_configs:
+      - targets:
+        - alertmanager:9093
+    - job_name: node-exporter
+      static_configs:
+      - targets:
+        - node-exporter:9100
+    - job_name: kube-state-metrics
+      static_configs:
+      - targets:
+        - kube-state-metrics:8080
+    - job_name: blackbox-exporter
+      static_configs:
+      - targets:
+        - blackbox-exporter:9115
+    - job_name: agent-api
+      metrics_path: /metrics/
+      static_configs:
+      - targets:
+        - agent-api.ai-app.svc:8000
+    - job_name: services
+      metrics_path: /probe
+      params:
+        module:
+        - http_2xx
+      static_configs:
+      - targets:
+        - http://agent-api.ai-app.svc:8000/readyz
+        - http://litellm.ai-llm.svc:4000/health/liveliness
+        - http://tei.ai-llm.svc/health
+      relabel_configs:
+      - source_labels:
+        - __address__
+        target_label: __param_target
+      - source_labels:
+        - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+    # 별도 Langfuse 가 준비돼 추적을 켰을 때만 HTTPS 상태를 검사한다.
+    - job_name: langfuse
+      metrics_path: /probe
+      params:
+        module: [http_2xx]
+      static_configs:
+      - targets: ${LANGFUSE_HEALTH_TARGETS}
+      relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+    - job_name: langfuse-node
+      scheme: https
+      metrics_path: /internal/metrics
+      static_configs:
+      - targets: ${LANGFUSE_METRICS_TARGETS}
+  alerts.yaml: |
+    groups:
+      - name: ddalgiro
+        rules:
+          # CronJob 이 만든 작업마다 생성 시각을 연결한다. 최신 작업만 실패 알림의 대상으로 삼는다.
+          - record: ddalgiro:cronjob_job_created
+            expr: kube_job_created{namespace=~"ai-app|ai-data"} * on(namespace,job_name) group_left(owner_name) kube_job_owner{owner_kind="CronJob",owner_is_controller="true"}
+          - alert: AiServiceUnavailable
+            expr: probe_success{job=~"services|langfuse"} == 0
+            for: 2m
+            labels: {severity: critical}
+            annotations: {summary: 'AI 구성 요소에 연결할 수 없습니다: {{ $labels.instance }}'}
+          - alert: MonitoringTargetDown
+            expr: up == 0
+            for: 3m
+            labels: {severity: warning}
+            annotations: {summary: '지표 수집 대상에 연결할 수 없습니다: {{ $labels.job }}'}
+          - alert: HostMemoryLow
+            expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.15
+            for: 10m
+            labels: {severity: warning}
+            annotations: {summary: '서버의 여유 메모리 15% 미만: {{ $labels.instance }}'}
+          - alert: NodeHostMetricsMissing
+            expr: (up{job=~"node-exporter|langfuse-node"} == 1) unless on(job,instance) (node_memory_MemTotal_bytes and on(job,instance) node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"})
+            for: 10m
+            labels: {severity: warning}
+            annotations: {summary: '호스트 메모리·루트 디스크 지표 누락: {{ $labels.instance }}'}
+          - alert: HostDiskLow
+            expr: node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"} < 0.15
+            for: 10m
+            labels: {severity: critical}
+            annotations: {summary: '서버 루트 디스크의 여유 공간 15% 미만: {{ $labels.instance }}'}
+          - alert: DeploymentNotReady
+            expr: kube_deployment_status_replicas_available{namespace=~"ai-app|ai-llm|ai-observe"} < kube_deployment_spec_replicas
+            for: 10m
+            labels: {severity: warning}
+            annotations: {summary: '준비되지 않은 Deployment: {{ $labels.namespace }}/{{ $labels.deployment }}'}
+          - alert: CronJobLatestFailed
+            expr: (kube_job_failed{condition="true"} == 1) and on(namespace,job_name) (ddalgiro:cronjob_job_created == on(namespace,owner_name) group_left max by(namespace,owner_name) (ddalgiro:cronjob_job_created))
+            for: 1m
+            labels: {severity: critical}
+            annotations: {summary: '정기 작업의 최신 실행 실패: {{ $labels.namespace }}/{{ $labels.job_name }}'}
+          # 2시간 안에 끝나지 않는 정상 작업이 생기면 실제 시간에 맞춰 이 상한을 늘린다.
+          - alert: CronJobNoRecentSuccess
+            expr: ((kube_cronjob_status_last_schedule_time - (kube_cronjob_status_last_successful_time or on(namespace,cronjob) (0 * kube_cronjob_created))) > 0) and on(namespace,cronjob) ((time() - kube_cronjob_status_last_schedule_time) > 7200) and on(namespace,cronjob) (kube_cronjob_spec_suspend == 0)
+            for: 10m
+            labels: {severity: warning}
+            annotations: {summary: '최근 정기 실행에 2시간 넘게 성공 기록이 없습니다: {{ $labels.cronjob }}'}
+          - alert: CronJobScheduleOverdue
+            expr: (time() - kube_cronjob_next_schedule_time > 900) and on(namespace,cronjob) (kube_cronjob_spec_suspend == 0)
+            for: 10m
+            labels: {severity: warning}
+            annotations: {summary: '정기 작업 실행이 예정 시각보다 늦습니다: {{ $labels.cronjob }}'}
+          - alert: AgentApiErrors
+            expr: (sum(rate(ddalgiro_http_requests_total{status=~"5.."}[10m])) / clamp_min(sum(rate(ddalgiro_http_requests_total[10m])), 0.001) > 0.05) and (sum(increase(ddalgiro_http_requests_total[10m])) >= 5)
+            for: 5m
+            labels: {severity: warning}
+            annotations: {summary: 'AI API 서버 오류 비율이 5%를 넘었습니다'}
+          - alert: AgentApiSlow
+            expr: (histogram_quantile(0.95, sum by(le) (rate(ddalgiro_http_request_duration_seconds_bucket[10m]))) > 45) and (sum(increase(ddalgiro_http_request_duration_seconds_count[10m])) >= 10)
+            for: 5m
+            labels: {severity: warning}
+            annotations: {summary: 'AI API의 95백분위 응답 시간이 45초를 넘었습니다'}
+          - alert: TraceInitializationFailed
+            expr: increase(ddalgiro_observability_errors_total[15m]) > 0
+            for: 1m
+            labels: {severity: warning}
+            annotations: {summary: 'AI 추적 기록 과정에 오류가 있습니다: {{ $labels.operation }}'}
+          - alert: TraceConfigurationMissing
+            expr: (ddalgiro_langfuse_enabled == 1) and (ddalgiro_langfuse_initialized == 0)
+            for: 5m
+            labels: {severity: warning}
+            annotations: {summary: '추적을 켰지만 SDK 초기화에 실패했습니다. 주소·키를 확인하세요'}
+          - alert: AlertDeliveryFailed
+            expr: increase(alertmanager_notifications_failed_total[10m]) > 0
+            for: 1m
+            labels: {severity: critical}
+            annotations: {summary: '장애 알림 전송 실패: SMTP 설정과 Alertmanager 로그를 확인하세요'}
+
+---
+# 7일 또는 8GB 중 먼저 닿는 조건으로 보관한다. PVC 를 지우면 지표도 지워진다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: ai-observe
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# 지표 수집 서버. Ingress·NodePort 는 만들지 않고 SSH 터널로만 본다.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  namespace: ai-observe
+spec:
+  serviceName: prometheus
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v3.16.0
+        ports:
+        - name: http
+          containerPort: 9090
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+        args:
+        - --config.file=/etc/prometheus/prometheus.yaml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=7d
+        - --storage.tsdb.retention.size=8GB
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+          readOnly: true
+        - name: data
+          mountPath: /prometheus
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: http
+      securityContext:
+        fsGroup: 65534
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-data
+
+---
+# 클러스터 내부의 Prometheus 주소.
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: ai-observe
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - name: http
+    port: 9090
+    targetPort: http
+
+---
+# 알림의 중복 전송·일시 중지 상태를 보관한다. 실제 수신 설정은 Secret 이 맡는다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alertmanager-data
+  namespace: ai-observe
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# 메일 알림. 먼저 scripts/observability/create-secrets.py --alerts 로 수신 설정을 만든다.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: alertmanager
+  namespace: ai-observe
+spec:
+  serviceName: alertmanager
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: alertmanager
+        image: prom/alertmanager:v0.35.0
+        ports:
+        - name: http
+          containerPort: 9093
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+        args:
+        - --config.file=/etc/alertmanager/alertmanager.yaml
+        - --storage.path=/alertmanager
+        - --cluster.listen-address=
+        volumeMounts:
+        - name: config
+          mountPath: /etc/alertmanager
+          readOnly: true
+        - name: data
+          mountPath: /alertmanager
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: http
+      securityContext:
+        fsGroup: 65534
+      volumes:
+      - name: config
+        secret:
+          secretName: alertmanager-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: alertmanager-data
+
+---
+# Prometheus 가 알림을 보내는 내부 주소.
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: ai-observe
+spec:
+  selector:
+    app: alertmanager
+  ports:
+  - name: http
+    port: 9093
+    targetPort: http
+
+---
+# 호스트 메모리·디스크를 읽기 전용으로 수집한다. 같은 단일 노드에 한 개만 뜬다.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: ai-observe
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: node-exporter
+        image: prom/node-exporter:v1.12.1
+        ports:
+        - name: http
+          containerPort: 9100
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+        args:
+        - --path.procfs=/host/proc
+        - --path.sysfs=/host/sys
+        - --path.rootfs=/host/root
+        - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run)($|/)
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        - name: root
+          mountPath: /host/root
+          readOnly: true
+          mountPropagation: HostToContainer
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: root
+        hostPath:
+          path: /
+
+---
+# 노드 지표의 내부 주소.
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: ai-observe
+spec:
+  selector:
+    app: node-exporter
+  ports:
+  - name: http
+    port: 9100
+    targetPort: http
+
+---
+# 작업·파드 상태를 읽는 계정. 비밀번호·키가 든 Secret 은 읽지 않는다.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: ai-observe
+
+---
+# Kubernetes 객체의 상태만 조회한다. 쓰기·Secret 조회 권한은 없다.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ddalgiro-observe-read
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  - nodes
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  - cronjobs
+  verbs:
+  - list
+  - watch
+
+---
+# 상태 수집 계정에 위 조회 권한만 연결한다.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ddalgiro-observe-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ddalgiro-observe-read
+subjects:
+- kind: ServiceAccount
+  name: kube-state-metrics
+  namespace: ai-observe
+
+---
+# CronJob 최신 성공·실패, 파드·Deployment 의 준비 상태를 숫자로 노출한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: ai-observe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - name: kube-state-metrics
+        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+        ports:
+        - name: http
+          containerPort: 8080
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+        args:
+        - --resources=pods,nodes,deployments,statefulsets,jobs,cronjobs
+        - --namespaces=ai-app,ai-data,ai-llm,ai-observe,kube-system
+      serviceAccountName: kube-state-metrics
+
+---
+# Kubernetes 상태 지표의 내부 주소.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  namespace: ai-observe
+spec:
+  selector:
+    app: kube-state-metrics
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+
+---
+# HTTP 상태 확인 전용. 사용자 문의나 AI 키를 보내지 않는다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-config
+  namespace: ai-observe
+data:
+  blackbox.yaml: |
+    modules:
+      http_2xx:
+        prober: http
+        timeout: 5s
+        http:
+          preferred_ip_protocol: ip4
+
+---
+# API 의 DB 준비 상태와 모델 쪽 부품의 생존 주소를 주기적으로 확인한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox-exporter
+  namespace: ai-observe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blackbox-exporter
+  template:
+    metadata:
+      labels:
+        app: blackbox-exporter
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: blackbox-exporter
+        image: prom/blackbox-exporter:v0.29.1
+        ports:
+        - name: http
+          containerPort: 9115
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+        args:
+        - --config.file=/etc/blackbox/blackbox.yaml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/blackbox
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: blackbox-config
+
+---
+# HTTP 검사기의 내부 주소.
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox-exporter
+  namespace: ai-observe
+spec:
+  selector:
+    app: blackbox-exporter
+  ports:
+  - name: http
+    port: 9115
+    targetPort: http

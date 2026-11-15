@@ -18,6 +18,7 @@ from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from app.settings import settings
+from app import observability
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -75,7 +76,14 @@ def ask_structured(schema: type[T], system: str, user: str, smart: bool = False)
     messages = [("system", system), ("human", user)]
     model = chat_model(smart)
     try:
-        return model.with_structured_output(schema, method="json_schema").invoke(messages)
+        with observability.generation(settings.MODEL_CHAT_SMART if smart else settings.MODEL_CHAT_FAST,
+                                      "structured", schema.__name__) as observation:
+            # 원문을 저장하지 않고도 사용량을 읽도록 raw 응답을 함께 받는다.
+            response = model.with_structured_output(schema, method="json_schema", include_raw=True).invoke(messages)
+            observability.record_usage(observation, settings.MODEL_CHAT_SMART if smart else settings.MODEL_CHAT_FAST, response["raw"])
+            if response["parsing_error"] is not None or response["parsed"] is None:
+                raise ValueError("구조화 출력 양식 오류")
+            return response["parsed"]
     except Exception:  # noqa: BLE001 - 모델·게이트웨이마다 실패 모양이 달라 넓게 잡고 2번 방법으로 넘어간다
         pass
 
@@ -84,11 +92,14 @@ def ask_structured(schema: type[T], system: str, user: str, smart: bool = False)
     fallback_system = (
         f"{system}\n\n반드시 아래 JSON Schema 에 맞는 JSON 객체 하나만 출력하라. 설명·코드 울타리는 쓰지 마라.\n{schema_text}"
     )
-    answer = model.invoke([("system", fallback_system), ("human", user)]).content
-    try:
-        return schema.model_validate_json(_extract_json(str(answer)))
-    except ValidationError as error:
-        raise ValueError(f"LLM 이 양식에 맞는 답을 내지 못했습니다: {error}") from error
+    with observability.generation(settings.MODEL_CHAT_SMART if smart else settings.MODEL_CHAT_FAST,
+                                  "fallback", schema.__name__) as observation:
+        answer = model.invoke([("system", fallback_system), ("human", user)])
+        observability.record_usage(observation, settings.MODEL_CHAT_SMART if smart else settings.MODEL_CHAT_FAST, answer)
+        try:
+            return schema.model_validate_json(_extract_json(str(answer.content)))
+        except ValidationError as error:
+            raise ValueError(f"LLM 이 양식에 맞는 답을 내지 못했습니다: {error}") from error
 
 
 def embed(texts: list[str]) -> list[list[float]]:
@@ -100,7 +111,13 @@ def embed(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     client = OpenAI(base_url=_base_url(), api_key=settings.LITELLM_API_KEY, timeout=settings.LLM_TIMEOUT_SECONDS)
-    response = client.embeddings.create(model=settings.MODEL_EMBED, input=texts)
+    with observability.generation(settings.MODEL_EMBED, "embedding", kind="embedding") as observation:
+        response = client.embeddings.create(model=settings.MODEL_EMBED, input=texts)
+        tokens = getattr(getattr(response, "usage", None), "prompt_tokens", None)
+        if isinstance(tokens, int) and tokens >= 0:
+            observability.TOKENS.labels(settings.MODEL_EMBED, "input").inc(tokens)
+            # 로컬 임베딩에는 외부 모델 호출 요금이 없다. 서버 임대료와 구분한다.
+            observability.update(observation, usage_details={"input": tokens}, cost_details={"total": 0.0})
     vectors = [item.embedding for item in response.data]
     if vectors and len(vectors[0]) != settings.EMBED_DIM:
         raise ValueError(f"임베딩 길이 {len(vectors[0])} 가 설정 EMBED_DIM={settings.EMBED_DIM} 과 다릅니다.")

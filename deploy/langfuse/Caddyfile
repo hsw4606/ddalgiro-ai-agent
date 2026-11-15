@@ -1,0 +1,11 @@
+# 별도 서버의 HTTPS 종단. 인증서 HTTP 확인에는 80 포트가 필요하다.
+{$LANGFUSE_DOMAIN} {
+    # 같은 보안 그룹의 AI 서버·운영자만 접근한다. 호스트 자원 지표에 원문·키는 없다.
+    handle /internal/metrics {
+        rewrite * /metrics
+        reverse_proxy node-exporter:9100
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}

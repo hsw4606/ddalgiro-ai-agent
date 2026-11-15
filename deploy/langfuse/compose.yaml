@@ -1,0 +1,227 @@
+# 별도 Langfuse 서버 전용 — AI 서버의 K3s 에 올리지 않는다.
+# 원본: https://github.com/langfuse/langfuse/blob/v4.80.0/docker-compose.yml (MIT)
+# 필요한 부품만 남기고 비밀값 기본값·외부 DB 포트·추가 AI 게이트웨이를 제거했다.
+# .env 생성: python3 ../../scripts/langfuse/init-env.py (이 폴더에서 실행)
+# 실행: docker compose --env-file .env config --quiet && docker compose --env-file .env up -d
+services:
+  # 관리 화면·추적 수신 API. 회원 가입을 막고 초기 관리자만 만든다.
+  web:
+    image: docker.langfuse.com/langfuse/langfuse:4.80.0
+    restart: unless-stopped
+    mem_limit: 2g
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+    - 127.0.0.1:3000:3000
+    environment:
+      NEXTAUTH_URL: https://${LANGFUSE_DOMAIN:?}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/langfuse
+      SALT: ${SALT:?}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?}
+      TELEMETRY_ENABLED: 'false'
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_AUTH: ${REDIS_AUTH:?}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: 'true'
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: 'true'
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      LANGFUSE_IN_APP_AGENT_ENABLED: 'false'
+      LANGFUSE_AI_GATEWAY_ENABLED: 'false'
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?}
+      AUTH_DISABLE_SIGNUP: 'true'
+      LANGFUSE_DISABLE_SIGNUP_ONBOARDING: 'true'
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:?}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:?}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:?}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:?}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:?}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:?}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:?}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:?}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:?}
+  # 추적을 비동기로 저장한다. AI 모델이나 외부 LLM 키는 두지 않는다.
+  worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.80.0
+    restart: unless-stopped
+    mem_limit: 2g
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NEXTAUTH_URL: https://${LANGFUSE_DOMAIN:?}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/langfuse
+      SALT: ${SALT:?}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?}
+      TELEMETRY_ENABLED: 'false'
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_AUTH: ${REDIS_AUTH:?}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: 'true'
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: 'true'
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      LANGFUSE_IN_APP_AGENT_ENABLED: 'false'
+      LANGFUSE_AI_GATEWAY_ENABLED: 'false'
+  # 사용자·프로젝트 설정. AI 에이전트의 PostgreSQL 과 별개다.
+  postgres:
+    image: postgres@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: langfuse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+    - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U postgres -d langfuse
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  # 처리 대기열. 디스크 기록을 켜 재시작 뒤에도 보존한다.
+  redis:
+    image: redis@sha256:2e3eb11462c4e3759e6972678dd051d150ff54b1e60714b3c33b701260172a90
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      REDIS_AUTH: ${REDIS_AUTH:?}
+    command:
+    - sh
+    - -c
+    - exec redis-server --requirepass "$$REDIS_AUTH" --maxmemory 384mb --maxmemory-policy
+      noeviction --appendonly yes
+    volumes:
+    - redis:/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - REDISCLI_AUTH="$$REDIS_AUTH" redis-cli ping | grep -q PONG
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  # 추적·토큰 수를 저장한다.
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3.62.3
+    restart: unless-stopped
+    mem_limit: 3g
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+    volumes:
+    - clickhouse:/var/lib/clickhouse
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --quiet --spider http://localhost:8123/ping
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  # 추적 이벤트의 객체 저장소. 호스트 포트는 공개하지 않는다.
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:18c8fa28697b25e0f34c6faae171079e88a03efb8e76a21d3b5d07b4e3cbef3e
+    restart: unless-stopped
+    mem_limit: 512m
+    entrypoint: sh
+    command:
+    - -c
+    - mkdir -p /data/langfuse && exec minio server --address :9000 /data
+    environment:
+      MINIO_ROOT_USER: langfuse
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    volumes:
+    - minio:/data
+    healthcheck:
+      test:
+      - CMD
+      - mc
+      - ready
+      - local
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  # HTTPS 입구. 보안 그룹에서 AI 서버·운영자 IP 만 허용한다.
+  caddy:
+    image: caddy@sha256:4e2425f6009577e7c651010f16679c28f7d12df3e7b1914f941a7a3370746b3c
+    restart: unless-stopped
+    mem_limit: 128m
+    depends_on:
+    - web
+    - node-exporter
+    ports:
+    - 80:80
+    - 443:443
+    environment:
+      LANGFUSE_DOMAIN: ${LANGFUSE_DOMAIN:?}
+    volumes:
+    - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    - caddy-data:/data
+    - caddy-config:/config
+  # 별도 서버의 자원도 수집한다. 호스트 포트를 열지 않고 Caddy의 제한된 HTTPS 경로로 읽는다.
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    mem_limit: 128m
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run)($|/)
+    volumes:
+      # 루트 디스크·메모리 검사만 필요하므로 동적 마운트 전파를 요구하지 않는다.
+      - /:/host:ro
+
+volumes:
+  postgres: {}
+  redis: {}
+  clickhouse: {}
+  minio: {}
+  caddy-data: {}
+  caddy-config: {}

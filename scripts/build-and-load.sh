@@ -5,7 +5,7 @@
 # 실행 위치: 내 맥, 저장소 루트. Docker Desktop 이 켜져 있어야 한다.
 # 쓰는 법:   bash scripts/build-and-load.sh 서버        예) bash scripts/build-and-load.sh ddalgiro-ai
 #            서버 자리에는 ssh 로 접속할 때 쓰는 이름을 넣는다 — ~/.ssh/config 의 별칭(ddalgiro-ai)이나 계정@서버IP.
-# 이미지 이름: site.env 의 AGENT_IMAGE (없으면 site.env.example 의 값). 코드를 고칠 때마다 태그를 올린다(0.3.0 → 0.3.1).
+# 이미지 이름: site.env 의 AGENT_IMAGE (없으면 site.env.example 의 값). 코드를 고칠 때마다 태그를 올린다(0.4.0 → 0.4.1).
 # 끝나면 서버에서 실행할 명령을 알려 준다(K3s 에 넣기 → 새 태그로 배포).
 set -euo pipefail
 
@@ -27,7 +27,8 @@ TAR="/tmp/$(printf '%s' "$IMAGE" | tr '/:' '--').tar"
 
 # AI 서버(EC2)의 CPU 가 x86_64 이므로, 맥이 Apple Silicon 이어도 amd64 용으로 빌드한다
 echo "빌드: $IMAGE (linux/amd64)"
-docker build --platform linux/amd64 -t "$IMAGE" "$ROOT/agent"
+# K3s 에 tar 로 반입하므로 별도 증명(attestation) 매니페스트가 섞이지 않는 단일 이미지를 만든다.
+docker build --platform linux/amd64 --provenance=false -t "$IMAGE" "$ROOT/agent"
 
 echo "파일로 저장: $TAR"
 docker save -o "$TAR" "$IMAGE"

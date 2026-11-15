@@ -39,11 +39,12 @@ Codex는 `AGENTS.md`도 함께 읽는다. 이 저장소는 딸기로컴퍼니의
 | `docs/04-에이전트/` | 에이전트 구조·배포, 트렌드 분석, 자연어 추천, 수집 출처 고르기와 추천 목록, 노코드 도구 Langflow(선택) |
 | `docs/05-외부-공개/` | AWS 보안 그룹·HTTPS·접근 제한 |
 | `docs/06-관리자-화면-연동/` | 백엔드 중계와 관리자 화면에 붙이는 방법 |
-| `docs/07-운영/` | 점검·요금 확인·백업·되살리기·버전 올리기 |
+| `docs/07-운영/` | 점검·요금 확인·백업·되살리기·버전 올리기, Prometheus 알림·별도 Langfuse 설치 |
 | `docs/08-추후-도입/` | 지금 설치 순서에 없는 절차(사무실 DGX Spark에서 대화 모델을 직접 서빙) |
 | `agent/` | 에이전트 소스·DB 테이블 정의·시험 |
 | `k8s/` | 쿠버네티스 매니페스트 원본(`${이름}` 자리는 `site.env`가 채움). `k8s/dgx-spark/`는 추후 도입용 |
-| `scripts/` | 값 채우기·빌드·비밀값 스크립트, 추후 도입용 DGX Spark 스크립트 |
+| `scripts/` | 값 채우기·빌드·비밀값 스크립트, 관측 설정 검사·별도 Langfuse 초기화, 추후 DGX Spark |
+| `deploy/` | 별도 서버의 Langfuse Compose·HTTPS와 CloudFormation 호스트 경보. 실제 `.env`는 Git 제외·권한 600 |
 | `BOX/` | 연구개발계획서 원본(pptx). 로컬에만 보관하고 Git·공개 저장소·서버 복사에서 제외한다. 원본은 고치지 않는다 |
 | `PROJECT_STATE.md` | 현재 상태·남은 일·변경 기록 |
 
@@ -90,9 +91,11 @@ Codex는 `AGENTS.md`도 함께 읽는다. 이 저장소는 딸기로컴퍼니의
 
 - 에이전트의 원칙 세 가지를 지킨다: 숫자·순위·조건 충족은 코드와 SQL이 정하고 LLM은 글만 쓴다 / LLM의 글은 `agent/app/grounding.py`의 근거 검사를 거친다 / 모델은 게이트웨이의 이름표(`chat-fast`·`chat-smart`·`embed`)로만 부른다.
 - Langflow는 보조 도구다(실험·시제품·내부 도구). 운영 흐름을 Langflow로 옮기지 않고, Langflow가 만든 글을 업체·고객에게 내보내는 길을 만들지 않는다. Langflow는 게이트웨이를 전용 키(월 한도)로만 부르고 Claude API 키를 갖지 않으며, 바깥에 열지 않는다(Ingress를 만들지 않는다). `k8s/60-langflow.yaml`의 막아 둔 설정(가입·내부 주소·사용자 코드·파이썬 실행 블록)을 풀지 않고, 내부 주소 허용 목록(`LANGFLOW_SSRF_ALLOWED_HOSTS`)에는 게이트웨이와 에이전트 외의 이름을 더하지 않는다.
+- 운영 지표·알림은 AI 서버의 Prometheus·Alertmanager, AI 처리 추적은 별도 자체 설치 Langfuse가 맡는다. 추적에는 문의·근거·응답·예외 원문을 넣지 않는다. 관측 장애는 업무 요청을 막지 않게 한다. 서버 내부 알림과 별개로 호스트 장애를 서버 밖에서 감지한다. Jaeger·EFK는 필요할 때 검토한다.
 - 대화 모델은 Claude API다. Claude API 키는 게이트웨이의 Secret에만 두고, 모델로 보내는 글(지시문·근거)을 늘리거나 바꾸면 `docs/02-Claude-API/`의 "무엇이 서버 밖으로 나가나" 표를 같은 작업에서 고친다. 개인정보·공급가(원가)는 모델로 보내는 글에 넣지 않는다.
-- 이 설치에만 해당하는 값(도메인·IP)은 `site.env`에, 비밀값은 쿠버네티스 Secret에만 둔다. `k8s/`의 원본에 실제 값을 적지 않는다. `site.env`·`rendered/`·`scripts/dgx-spark/vllm.env`는 git에 올리지 않는다.
+- 이 설치에만 해당하는 값(도메인·IP)은 `site.env`에, AI 서버의 비밀값은 쿠버네티스 Secret에만 둔다. `k8s/`의 원본에 실제 값을 적지 않는다. `site.env`·`rendered/`·`scripts/dgx-spark/vllm.env`·`deploy/langfuse/.env`는 git에 올리지 않는다. 별도 Docker 서버의 비밀값은 이 `.env`(권한 600)에만 두고, AI 서버의 프로젝트 키·SMTP 설정은 K3s Secret에 둔다.
 - `agent/`를 고치면 `agent/` 폴더에서 `python -m pytest tests/test_rules.py -q`를 통과시킨다. LLM·DB를 쓰는 흐름을 고쳤으면 `tests/test_live.py`도 돌린다(머리말의 실행 방법). Claude API를 부르는 시험은 요금이 들므로 사용자의 키와 승인이 있을 때만 돌리고, 못 돌렸으면 그렇게 적는다.
+- 관측 코드를 고치면 `agent/tests/test_observability.py`·`test_observability_setup.py`를 실행하고, 수집·경보 설정은 `scripts/observability/check-configs.py`로 검사한다. 원문 비수집·장애 시 업무 유지·병렬 추적·경보 발생/해제를 확인한다.
 - `k8s/22-litellm.yaml`의 모델 표를 고치면 게이트웨이가 실제로 내보내는 요청을 확인한다(가짜 서버로 받아 보거나 실제 호출). `drop_params: true`는 끄지 않는다.
 - 버전을 바꾸면 `agent/requirements.txt`·`k8s/`의 이미지 태그와 버전 고정표를 함께 고친다.
 - 인스턴스 유형·디스크, Claude 모델·생각 깊이, 모델로 보내는 지시문·근거의 길이, 호출 횟수를 바꾸면 `docs/00-개요/04-월-비용-계산.md`의 단가·가정·금액을 같은 작업에서 다시 계산한다. 실제 사용량을 재면 어림을 그 값으로 바꾼다.

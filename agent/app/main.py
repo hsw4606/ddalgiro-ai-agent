@@ -3,7 +3,8 @@
 실행: uvicorn app.main:app --host 0.0.0.0 --port 8000
 부르는 쪽: 딸기로 백엔드(ddalgiro-backend)가 관리자 화면의 요청을 받아 이 API 로 전달한다.
           브라우저가 직접 부르지 않는다. 그래서 여기서는 로그인 대신 "약속한 키" 만 확인한다.
-확인 방법: /healthz·/readyz 를 뺀 모든 주소는 요청 헤더 X-AI-Key 가 설정값 AI_API_KEY 와 같아야 한다.
+확인 방법: /healthz·/readyz·/metrics/ 를 뺀 모든 주소는 X-AI-Key 로 확인한다.
+          /metrics/ 는 클러스터 내부 전용이며 외부 Ingress 의 /v1 경로에는 포함되지 않는다.
 주소 묶음:
   /v1/trends…     트렌드 랭킹·상세·다시 분석 (안건 1 · 기획 02)
   /v1/vendors…    업체 프로필·맞춤 추천·채택 기록 (안건 1 · 기획 02 §6)
@@ -23,7 +24,7 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app import dates, db
+from app import dates, db, observability
 from app.reco import graph as reco_graph, proposal, events
 from app.settings import settings
 from app.trend import pipeline, recommend
@@ -34,10 +35,17 @@ async def lifespan(_app: FastAPI):
     """서버가 요청을 받기 전에 한 번 실행된다: DB 가 뜰 때까지 기다리고, DB 테이블이 없으면 만든다."""
     db.wait_for_db()
     db.apply_schema()
-    yield
+    observability.initialize()
+    try:
+        yield
+    finally:
+        observability.flush()
 
 
-app = FastAPI(title="딸기로 AI 에이전트", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="딸기로 AI 에이전트", version="0.4.0", lifespan=lifespan)
+# 문의나 실제 URL 을 기록하지 않고 정해진 경로별 횟수·시간만 수집한다.
+app.add_middleware(observability.MetricsMiddleware)
+app.mount("/metrics", observability.metrics_app)
 
 
 def require_key(x_ai_key: str | None = Header(default=None)) -> None:

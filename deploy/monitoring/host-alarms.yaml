@@ -1,0 +1,84 @@
+# 서버 안의 Prometheus 가 함께 멈춰도 EC2 상태 검사 경보는 AWS 에서 보낸다.
+# 실제 리소스 생성·구독 메일 발송은 CloudFormation 에 이 파일을 배포했을 때만 일어난다.
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EC2 host alarms for ddalgiro AI and optional Langfuse server
+Parameters:
+  AiInstanceId:
+    Type: AWS::EC2::Instance::Id
+    Description: AI server instance in this region
+  LangfuseInstanceId:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|^i-([0-9a-f]{8}|[0-9a-f]{17})$)'
+    Description: Optional separate Langfuse instance in this region
+  AlertEmail:
+    Type: String
+    AllowedPattern: '[^\s@]+@[^\s@]+\.[^\s@]+'
+    Description: Operations email; recipient must confirm the SNS subscription
+Conditions:
+  HasLangfuse:
+    Fn::Not:
+      - Fn::Equals: [{Ref: LangfuseInstanceId}, '']
+Resources:
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: {Ref: AlertEmail}
+  # CloudWatch 만 같은 계정·리전에서 경보를 게시하도록 허용한다.
+  TopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [{Ref: NotificationTopic}]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: cloudwatch.amazonaws.com}
+            Action: sns:Publish
+            Resource: {Ref: NotificationTopic}
+            Condition:
+              StringEquals:
+                aws:SourceAccount: {Ref: 'AWS::AccountId'}
+              ArnLike:
+                aws:SourceArn:
+                  Fn::Sub: 'arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:*'
+  AiHostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: TopicPolicy
+    Properties:
+      AlarmDescription: AI EC2 status check failure or missing status metrics
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed
+      Dimensions: [{Name: InstanceId, Value: {Ref: AiInstanceId}}]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      AlarmActions: [{Ref: NotificationTopic}]
+      OKActions: [{Ref: NotificationTopic}]
+  LangfuseHostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasLangfuse
+    DependsOn: TopicPolicy
+    Properties:
+      AlarmDescription: Langfuse EC2 status check failure or missing status metrics
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed
+      Dimensions: [{Name: InstanceId, Value: {Ref: LangfuseInstanceId}}]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      AlarmActions: [{Ref: NotificationTopic}]
+      OKActions: [{Ref: NotificationTopic}]
+Outputs:
+  TopicArn:
+    Value: {Ref: NotificationTopic}

@@ -16,7 +16,7 @@ from typing import Any, Callable, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from app import dates, db
+from app import observability, dates, db
 from app.reco import capacity, explain, ranking, search, slots as slot_rules
 from app.reco.slots import Slots
 from app.settings import settings
@@ -55,14 +55,15 @@ def _timed(node: str, func: Callable[[RecoState], dict]) -> Callable[[RecoState]
 
     def wrapper(state: RecoState) -> dict:
         """단계를 실행하고 시간을 잰다. 성공·실패 모두 기록한 뒤, 실패는 다시 올린다."""
-        started = time.monotonic()
-        try:
-            result = func(state)
-        except Exception as error:
-            db.record_run("reco", node, False, int((time.monotonic() - started) * 1000), {"error": str(error)[:300]})
-            raise
-        db.record_run("reco", node, True, int((time.monotonic() - started) * 1000))
-        return result
+        with observability.step("reco." + node):
+            started = time.monotonic()
+            try:
+                result = func(state)
+            except Exception as error:
+                db.record_run("reco", node, False, int((time.monotonic() - started) * 1000), {"error": str(error)[:300]})
+                raise
+            db.record_run("reco", node, True, int((time.monotonic() - started) * 1000))
+            return result
 
     return wrapper
 
@@ -188,6 +189,7 @@ def build_graph():
 _graph = None
 
 
+@observability.traced("reco.request")
 def _invoke(initial: RecoState) -> dict[str, Any]:
     """그래프를 돌리고 마지막 상태를 API 가 돌려줄 사전으로 바꾼다. 그래프는 처음 불릴 때 한 번만 조립한다."""
     global _graph

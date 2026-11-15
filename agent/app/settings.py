@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     # Claude API 를 쓸 때는 비워 둔다 — 생각 깊이는 게이트웨이의 모델 표(k8s/22-litellm.yaml 의 output_config)에서 정한다.
     LLM_EXTRA_BODY: str = ""
 
+    # ── 별도 Langfuse 서버의 AI 처리 추적 ──
+    # 처음에는 끈다. 주소는 ConfigMap, 프로젝트 키 두 개는 agent-secret 에만 넣는다.
+    # 켜도 문의·근거·응답 원문은 보내지 않는다(app/observability.py 의 허용 목록).
+    LANGFUSE_ENABLED: bool = False
+    LANGFUSE_BASE_URL: str = ""
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+
     # ── 이 API 를 부르는 쪽 확인 ──
     # 부르는 쪽(딸기로 백엔드)이 요청 헤더 X-AI-Key 에 넣어 보내야 하는 값. 비어 있으면 검사하지 않는다(내 컴퓨터 시험용).
     AI_API_KEY: str = ""

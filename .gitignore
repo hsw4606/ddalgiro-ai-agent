@@ -12,3 +12,5 @@ __pycache__/
 .pytest_cache/
 .venv/
 agent/.env
+# 별도 Langfuse 서버의 DB·암호화·프로젝트 비밀값
+deploy/langfuse/.env

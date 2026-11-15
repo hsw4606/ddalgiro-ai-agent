@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from typing import Any
 
 from app import grounding
@@ -140,5 +141,7 @@ def explain_all(results: list[dict[str, Any]], slots: Slots, broadened: bool = F
     if not results:
         return []
     with ThreadPoolExecutor(max_workers=len(results)) as pool:
-        reasons = list(pool.map(lambda result: explain_one(result, slots, broadened), results))
+        # 새 스레드에는 문맥이 자동 전달되지 않아, 각 호출에 부모 추적을 복사한다.
+        futures = [pool.submit(copy_context().run, explain_one, result, slots, broadened) for result in results]
+        reasons = [future.result() for future in futures]
     return [{**result, **reason} for result, reason in zip(results, reasons)]

@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${1:-$ROOT/site.env}"
 OUT="$ROOT/rendered"
 # 채워 넣을 값의 이름. site.env.example 의 항목과 같아야 한다.
-NAMES=(AI_DOMAIN ACME_EMAIL CLUSTER_ISSUER ALLOW_IP_1 ALLOW_IP_2 CHAT_FAST_MODEL CHAT_SMART_MODEL AGENT_IMAGE TEI_IMAGE)
+NAMES=(AI_DOMAIN ACME_EMAIL CLUSTER_ISSUER ALLOW_IP_1 ALLOW_IP_2 CHAT_FAST_MODEL CHAT_SMART_MODEL AGENT_IMAGE TEI_IMAGE LANGFUSE_ENABLED LANGFUSE_BASE_URL LANGFUSE_HEALTH_TARGETS LANGFUSE_METRICS_TARGETS)
 # DGX Spark 를 붙였을 때만 필요한 값의 이름
 DGX_NAMES=(DGX_SPARK_IP DGX_SPARK_PORT VLLM_MODEL)
 
@@ -24,6 +24,25 @@ fi
 # 값 파일을 읽는다. 파일 안의 각 줄(이름=값)이 변수로 들어온다
 # shellcheck disable=SC1090
 . "$ENV_FILE"
+# 기존 값 파일에는 추적 설정이 없을 수 있다. 별도 서버가 준비되기 전에는 켜지 않는다.
+LANGFUSE_ENABLED="${LANGFUSE_ENABLED:-false}"
+LANGFUSE_BASE_URL="${LANGFUSE_BASE_URL:-}"
+case "$LANGFUSE_ENABLED" in
+  true|false) ;;
+  *) echo "LANGFUSE_ENABLED 는 true 또는 false 로 적습니다." >&2; exit 1 ;;
+esac
+if [ "$LANGFUSE_ENABLED" = true ] && [[ ! "$LANGFUSE_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$ ]]; then
+  echo "추적을 켜려면 LANGFUSE_BASE_URL 에 별도 서버의 HTTPS 주소가 필요합니다." >&2
+  exit 1
+fi
+# 준비 전인 관측 서버를 장애로 판단하지 않도록 추적을 켰을 때만 검사한다.
+LANGFUSE_HEALTH_TARGETS='[]'
+LANGFUSE_METRICS_TARGETS='[]'
+if [ "$LANGFUSE_ENABLED" = true ]; then
+  LANGFUSE_HEALTH_TARGETS="[\"${LANGFUSE_BASE_URL%/}/api/public/health\"]"
+  metrics_host="${LANGFUSE_BASE_URL#https://}"
+  LANGFUSE_METRICS_TARGETS="[\"${metrics_host%/}\"]"
+fi
 
 # 값을 채울 매니페스트 목록. DGX_SPARK_IP 가 있을 때만 DGX Spark 용 값과 매니페스트를 더한다
 FILES=("$ROOT"/k8s/*.yaml)
@@ -36,7 +55,7 @@ fi
 SED_ARGS=()
 for name in "${NAMES[@]}"; do
   value="${!name:-}"
-  if [ -z "$value" ]; then
+  if [ -z "$value" ] && [ "$name" != LANGFUSE_BASE_URL ]; then
     echo "$ENV_FILE 에 $name 값이 없습니다." >&2
     exit 1
   fi

@@ -17,7 +17,7 @@ from typing import Any, Callable, Literal, TypedDict
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
 
-from app import db, grounding, llm
+from app import observability, db, grounding, llm
 from app.trend import signals
 from app.trend.signals import metric_series, source_views, family_growth
 
@@ -58,14 +58,15 @@ def _timed(node: str, func: Callable[[TrendState], dict]) -> Callable[[TrendStat
 
     def wrapper(state: TrendState) -> dict:
         """단계를 실행하고 시간을 잰다. 성공·실패 모두 기록한 뒤, 실패는 다시 올린다."""
-        started = time.monotonic()
-        try:
-            result = func(state)
-        except Exception as error:
-            db.record_run("trend", node, False, int((time.monotonic() - started) * 1000), {"error": str(error)[:300]})
-            raise
-        db.record_run("trend", node, True, int((time.monotonic() - started) * 1000), {"keyword_id": state["keyword_id"]})
-        return result
+        with observability.step("trend." + node):
+            started = time.monotonic()
+            try:
+                result = func(state)
+            except Exception as error:
+                db.record_run("trend", node, False, int((time.monotonic() - started) * 1000), {"error": str(error)[:300]})
+                raise
+            db.record_run("trend", node, True, int((time.monotonic() - started) * 1000), {"keyword_id": state["keyword_id"]})
+            return result
 
     return wrapper
 
@@ -294,6 +295,7 @@ def build_graph():
 _graph = None
 
 
+@observability.traced("trend.keyword")
 def run(keyword_id: int, force_insight: bool = False) -> TrendState:
     """키워드 하나를 분석한다.
 

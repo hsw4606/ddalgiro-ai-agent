@@ -1,7 +1,7 @@
 # 딸기로 AI 에이전트 이미지 — API 서버와 정기 작업이 같은 이미지를 쓴다(실행 명령만 다르다).
 #
 # 빌드(저장소 루트에서, K3s 서버가 x86_64 라서 플랫폼을 amd64 로 고정한다):
-#   docker build --platform linux/amd64 -t ddalgiro/agent-api:0.3.0 agent/
+#   docker build --platform linux/amd64 --provenance=false -t ddalgiro/agent-api:0.4.0 agent/
 # 보통은 scripts/build-and-load.sh 가 빌드와 서버로 보내기를 함께 한다.
 FROM python:3.12-slim
 
