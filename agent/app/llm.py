@@ -39,7 +39,7 @@ def chat_model(smart: bool = False) -> ChatOpenAI:
     smart=False: 빠른 이름표(분류·조건 뽑기). smart=True: 글을 쓰는 이름표(브리핑·추천 사유).
     temperature=0 은 같은 입력에 되도록 같은 답이 나오게 하는 설정이다(검증·재현에 유리).
     Claude 의 최신 모델은 이 옵션을 받지 않으므로 게이트웨이가 빼고 보낸다(22-litellm.yaml 의 drop_params).
-    직접 서빙하는 모델(추후 도입하는 DGX Spark)로 바꾸면 그대로 전달된다.
+    이 옵션을 받는 다른 모델로 게이트웨이의 모델 표를 바꾸면 그대로 전달된다.
     """
     return ChatOpenAI(
         base_url=_base_url(),

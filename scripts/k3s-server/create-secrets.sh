@@ -12,7 +12,6 @@
 #            (선택) 노코드 도구 Langflow 의 Secret 을 만들려면: bash scripts/k3s-server/create-secrets.sh --langflow
 #            (선택) Langflow 가 게이트웨이를 부를 전용 키를 만들려면(30일 한도 달러, 기본 20):
 #                                                  bash scripts/k3s-server/create-secrets.sh --langflow-key 20
-#            (추후 도입) DGX Spark 의 vLLM 키를 넣거나 바꾸려면: bash scripts/k3s-server/create-secrets.sh --vllm
 # 만든 값 보기(예: 백엔드에 알려 줄 AI_API_KEY):
 #            kubectl -n ai-app get secret agent-secret -o jsonpath='{.data.AI_API_KEY}' | base64 -d; echo
 # ⚠️ 출력된 값은 채팅·메일·문서에 붙이지 않는다. 필요한 곳(백엔드 서버의 비밀값 파일)에만 직접 옮긴다.
@@ -130,17 +129,9 @@ PY
     echo "⚠️ 위 키는 다시 볼 수 없습니다. Langflow 화면의 전역 변수(Global Variables)에 바로 넣고, 채팅·메일·문서에 붙이지 않습니다." >&2
     exit 0
     ;;
-  --vllm)
-    # (추후 도입) DGX Spark 의 vLLM 키를 넣거나 바꾼다. 게이트웨이의 모델 표가 DGX Spark 를 가리킬 때만 쓰인다
-    vllm_key="$(ask_hidden 'DGX Spark 의 VLLM_API_KEY: ')"
-    patch_value ai-llm litellm-secret VLLM_API_KEY "$vllm_key"
-    kubectl -n ai-llm rollout restart deployment/litellm
-    echo "litellm-secret 의 vLLM 키를 바꾸고 LiteLLM 을 다시 시작했습니다."
-    exit 0
-    ;;
   "") ;;
   *)
-    echo "쓰는 법: $0 [--anthropic | --naver | --instagram | --langflow | --langflow-key [30일 한도] | --vllm]" >&2
+    echo "쓰는 법: $0 [--anthropic | --naver | --instagram | --langflow | --langflow-key [30일 한도]]" >&2
     exit 2
     ;;
 esac

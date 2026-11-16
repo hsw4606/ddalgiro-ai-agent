@@ -11,7 +11,6 @@
 #       LITELLM_MASTER_KEY(게이트웨이를 부를 때 쓰는 키), DATABASE_URL(litellm DB), ANTHROPIC_API_KEY(Claude API 키)
 # 접속 주소(클러스터 안): http://litellm.ai-llm.svc:4000  (OpenAI 호환, Authorization: Bearer <LITELLM_MASTER_KEY>)
 # 바깥에는 열지 않는다(Ingress 없음). 관리 화면은 필요할 때 kubectl port-forward 로 본다.
-# 대화 모델을 사무실 장비(DGX Spark)로 옮길 때 바꿀 곳은 docs/08-추후-도입/01-DGX-Spark-도입.md 에 있다.
 apiVersion: v1
 kind: ConfigMap
 metadata:

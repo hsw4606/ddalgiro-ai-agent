@@ -13,7 +13,7 @@
 | 쓰는 곳 | 딸기로 관리자 화면 — 직원이 입점업체에 줄 AI 정보를 봅니다 |
 | 공개 | AWS 보안 그룹과 IP 허용 목록으로, 딸기로 백엔드만 HTTPS로 부릅니다 |
 
-- **서버와 모델**: AI용은 `t3.xlarge`(4 vCPU·16GiB·gp3 100GiB, K3s), Langfuse용은 `m7i.xlarge`(4 vCPU·16GiB·gp3 100GiB, Docker Compose)입니다. 두 서버는 역할 분리이며 이중화는 없습니다. 사무실 GPU 장비(DGX Spark)는 [추후 도입](docs/08-추후-도입/01-DGX-Spark-도입.md)입니다.
+- **서버와 모델**: AI용은 `t3.xlarge`(4 vCPU·16GiB·gp3 100GiB, K3s), Langfuse용은 `m7i.xlarge`(4 vCPU·16GiB·gp3 100GiB, Docker Compose)입니다. 두 서버는 역할 분리이며 이중화는 없습니다.
 
 ---
 
@@ -77,10 +77,6 @@
 - [점검·백업·문제 해결](docs/07-운영/01-점검-백업-문제-해결.md)
 - [모니터링과 AI 추적](docs/07-운영/02-모니터링과-AI-추적.md)
 
-**08. 추후 도입** (지금 설치 순서에 들어 있지 않음)
-
-- [DGX Spark 도입](docs/08-추후-도입/01-DGX-Spark-도입.md)
-
 **문서 밖 폴더**
 
 | 폴더 | 내용 |
@@ -93,9 +89,8 @@
 | `site.env.example` | 이 설치에만 해당하는 값의 견본. `site.env`로 복사해 씁니다(git에 올리지 않음) |
 | `BOX/` | 로컬에만 보관하는 연구개발계획서 원본(pptx). Git에서 제외하므로 새로 받은 저장소에는 없습니다 |
 
-- **`k8s/`**: `k8s/dgx-spark/`는 추후 도입 때만 씁니다.
 - **`deploy/`**: 실제 `.env`는 Langfuse 서버에서 만들어 그 서버에만 둡니다(git·서버 복사에서 제외).
-- **`scripts/`**: 그 밖에 알림·Langfuse 키 Secret 넣기와 관측 설정 검사(`observability/`), 별도 Langfuse 서버의 `.env` 만들기(`langfuse/`), 추후 도입할 DGX Spark 모델 서버(`dgx-spark/`)가 있습니다.
+- **`scripts/`**: 그 밖에 알림·Langfuse 키 Secret 넣기와 관측 설정 검사(`observability/`), 별도 Langfuse 서버의 `.env` 만들기(`langfuse/`)가 있습니다.
 - **`tests/`**: `scripts/observability/check-configs.py`가 읽습니다. 에이전트 소스의 시험은 `agent/tests/`에 있습니다.
 - **`site.env.example`**: 담는 값은 도메인·허용 IP·Claude 모델 ID·이미지 이름·Langfuse 주소입니다.
 - **`BOX/`**: [대응 문서](docs/00-개요/03-연구개발계획서-구현-대응.md)가 이 원본의 11~26쪽과 29~30쪽을 기준으로 합니다.

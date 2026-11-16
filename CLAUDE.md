@@ -40,10 +40,9 @@ Codex는 `AGENTS.md`도 함께 읽는다. 이 저장소는 딸기로컴퍼니의
 | `docs/05-외부-공개/` | AWS 보안 그룹·HTTPS·접근 제한 |
 | `docs/06-관리자-화면-연동/` | 백엔드 중계와 관리자 화면에 붙이는 방법 |
 | `docs/07-운영/` | 점검·요금 확인·백업·되살리기·버전 올리기, Prometheus 알림·별도 Langfuse 설치 |
-| `docs/08-추후-도입/` | 지금 설치 순서에 없는 절차(사무실 DGX Spark에서 대화 모델을 직접 서빙) |
 | `agent/` | 에이전트 소스·DB 테이블 정의·시험 |
-| `k8s/` | 쿠버네티스 매니페스트 원본(`${이름}` 자리는 `site.env`가 채움). `k8s/dgx-spark/`는 추후 도입용 |
-| `scripts/` | 값 채우기·빌드·비밀값 스크립트, 관측 설정 검사·별도 Langfuse 초기화, 추후 DGX Spark |
+| `k8s/` | 쿠버네티스 매니페스트 원본(`${이름}` 자리는 `site.env`가 채움) |
+| `scripts/` | 값 채우기·빌드·비밀값 스크립트, 관측 설정 검사·별도 Langfuse 초기화 |
 | `deploy/` | 별도 서버의 Langfuse Compose·HTTPS와 CloudFormation 호스트 경보. 실제 `.env`는 Git 제외·권한 600 |
 | `tests/` | 경보 규칙 시계열 시험(`monitoring/alerts.test.yaml`). `scripts/observability/check-configs.py`가 읽는다 |
 | `BOX/` | 연구개발계획서 원본(pptx). 로컬에만 보관하고 Git·공개 저장소·서버 복사에서 제외한다. 고치지 않는다 |
@@ -61,7 +60,7 @@ Codex는 `AGENTS.md`도 함께 읽는다. 이 저장소는 딸기로컴퍼니의
 - 주석과 가이드는 현재 역할·동작·필요한 이유만 설명한다. 틀린 원문을 고치고 아래에 정정문을 덧붙이지 않는다.
 - 수정 날짜·문제 번호·수정 전후·작업 경과를 본문과 소스 주석에 쌓지 않는다. 변경 기록은 `PROJECT_STATE.md`에 한두 줄로 남긴다.
 - 입력·출력·단위·권한·실패 처리와 위험한 작업의 전제는 유지한다. 같은 내용을 여러 절에 복사하기보다 한 곳에 쓰고 연결한다.
-- 명령은 실행 위치(내 맥·K3s 서버·Langfuse 서버, 추후 도입 문서는 DGX Spark)를 밝히고 복사할 수 있게 쓴다. K3s 서버(AI 서버)와 Langfuse 서버는 각각 AWS EC2 인스턴스 한 대를 가리킨다. 바로 아래에 각 명령의 역할·성공 기준을 풀이한다.
+- 명령은 실행 위치(내 맥·K3s 서버·Langfuse 서버)를 밝히고 복사할 수 있게 쓴다. K3s 서버(AI 서버)와 Langfuse 서버는 각각 AWS EC2 인스턴스 한 대를 가리킨다. 바로 아래에 각 명령의 역할·성공 기준을 풀이한다.
 - 되돌릴 수 없는 작업·비밀값 유출 주의는 ⚠️·❌로 표시한다. 기준일은 버전·모델 이름·요금·외부 서비스 상태처럼 바뀌는 사실에 붙인다.
 - **실제 계정·서버·기기에서 확인하지 못한 절차는 문서 머리에 ⚠️로 밝힌다.** 무엇을 어디서 확인했는지는 `docs/00-개요/02-준비물과-정할-값.md`의 버전 고정표 한 곳에 적는다. 확인하면 그 표시를 지운다.
 - 데이터베이스는 **DB 테이블**이라고 쓴다. **표**는 화면·문서의 표에만 쓴다.
@@ -85,7 +84,7 @@ Codex는 `AGENTS.md`도 함께 읽는다. 이 저장소는 딸기로컴퍼니의
 - `docs/`의 분류 폴더·문서 이름은 한글로, 숫자 앞머리와 낱말 사이 `-`를 사용한다. API·제품명은 영문을 허용한다.
 - 표준 이름 `README.md`·`CLAUDE.md`·`AGENTS.md`·`PROJECT_STATE.md`, 소스·매니페스트·스크립트·설정 파일은 예외다.
 - 링크는 상대 경로를 쓴다. 문서 이름·제목을 바꾸면 이 저장소와 관련 저장소의 경로·절 링크를 함께 고친다.
-- 옮겨 온 코드·설정은 출처를 남긴다(예: NVIDIA 플레이북 스크립트, tips-task 가이드의 점수 계산식).
+- 옮겨 온 코드·설정은 출처를 남긴다(예: tips-task 가이드의 점수 계산식).
 - 새 문서는 README 목차와 `docs/00-개요/01-전체-구성-한눈에-보기.md`의 순서 표에 추가한다.
 
 ## 6. 구현과 검증
@@ -94,7 +93,7 @@ Codex는 `AGENTS.md`도 함께 읽는다. 이 저장소는 딸기로컴퍼니의
 - Langflow는 보조 도구다(실험·시제품·내부 도구). 운영 흐름을 Langflow로 옮기지 않고, Langflow가 만든 글을 업체·고객에게 내보내는 길을 만들지 않는다. Langflow는 게이트웨이를 전용 키(30일 한도)로만 부르고 Claude API 키를 갖지 않으며, 바깥에 열지 않는다(Ingress를 만들지 않는다). `k8s/60-langflow.yaml`의 막아 둔 설정(가입·내부 주소·사용자 코드·파이썬 실행 블록)을 풀지 않고, 내부 주소 허용 목록(`LANGFLOW_SSRF_ALLOWED_HOSTS`)에는 게이트웨이와 에이전트 외의 이름을 더하지 않는다.
 - 운영 지표·알림은 AI 서버의 Prometheus·Alertmanager, AI 처리 추적은 별도 자체 설치 Langfuse가 맡는다. 기본 설치는 AI용 `t3.xlarge`와 Langfuse용 `m7i.xlarge`(각 4 vCPU·16GiB·gp3 100GiB)의 두 서버이며, Langfuse를 추후 선택 항목으로 설명하지 않는다. 추적에는 문의·근거·응답·예외 원문을 넣지 않는다. 관측 장애는 업무 요청을 막지 않게 한다. 서버 내부 알림과 별개로 호스트 장애를 서버 밖에서 감지한다. Jaeger·EFK는 필요할 때 검토한다.
 - 대화 모델은 Claude API다. Claude API 키는 게이트웨이의 Secret에만 두고, 모델로 보내는 글(지시문·근거)을 늘리거나 바꾸면 `docs/02-Claude-API/`의 "무엇이 서버 밖으로 나가나" 표를 같은 작업에서 고친다. 개인정보·공급가(원가)는 모델로 보내는 글에 넣지 않는다.
-- 이 설치에만 해당하는 값(도메인·IP)은 `site.env`에, AI 서버의 비밀값은 쿠버네티스 Secret에만 둔다. `k8s/`의 원본에 실제 값을 적지 않는다. `site.env`·`rendered/`·`scripts/dgx-spark/vllm.env`·`deploy/langfuse/.env`는 git에 올리지 않는다. 별도 Docker 서버의 비밀값은 이 `.env`(권한 600)에만 두고, AI 서버의 프로젝트 키·SMTP 설정은 K3s Secret에 둔다.
+- 이 설치에만 해당하는 값(도메인·IP)은 `site.env`에, AI 서버의 비밀값은 쿠버네티스 Secret에만 둔다. `k8s/`의 원본에 실제 값을 적지 않는다. `site.env`·`rendered/`·`deploy/langfuse/.env`는 git에 올리지 않는다. 별도 Docker 서버의 비밀값은 이 `.env`(권한 600)에만 두고, AI 서버의 프로젝트 키·SMTP 설정은 K3s Secret에 둔다.
 - `agent/`를 고치면 `agent/` 폴더에서 `python -m pytest tests/test_rules.py -q`를 통과시킨다. LLM·DB를 쓰는 흐름을 고쳤으면 `tests/test_live.py`도 돌린다(머리말의 실행 방법). Claude API를 부르는 시험은 요금이 들므로 사용자의 키와 승인이 있을 때만 돌리고, 못 돌렸으면 그렇게 적는다.
 - 관측 코드를 고치면 `agent/tests/test_observability.py`·`test_observability_setup.py`를 실행하고, 수집·경보 설정은 `scripts/observability/check-configs.py`로 검사한다. 원문 비수집·장애 시 업무 유지·병렬 추적·경보 발생/해제를 확인한다.
 - `k8s/22-litellm.yaml`의 모델 표를 고치면 게이트웨이가 실제로 내보내는 요청을 확인한다(가짜 서버로 받아 보거나 실제 호출). `drop_params: true`는 끄지 않는다.
